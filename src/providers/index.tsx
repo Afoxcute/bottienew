@@ -1,13 +1,14 @@
 "use client";
 
-import { PrivyProvider } from "@privy-io/react-auth";
-import { SmartWalletsProvider } from "@privy-io/react-auth/smart-wallets";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { WagmiProvider } from "@privy-io/wagmi";
+import { WagmiProvider } from "wagmi";
 import { YieldProvider } from "@yo-protocol/react";
 import { useState } from "react";
 import { wagmiConfig } from "@/lib/wagmi";
-import { privyConfig } from "@/lib/privy";
+import { MagicProvider } from "@/hooks/MagicProvider";
+import { ZeroDevProvider } from "@/hooks/ZeroDevProvider";
+import { UniversalAccountProvider } from "@/hooks/UniversalAccountProvider";
+import { LoginEmailModal } from "@/components/auth/login-email-modal";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -22,21 +23,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   );
 
-  const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-  if (!privyAppId) return <>{children}</>;
-
   return (
-    <PrivyProvider
-      appId={privyAppId}
-      config={privyConfig}
-    >
-      <SmartWalletsProvider>
-        <QueryClientProvider client={queryClient}>
-          <WagmiProvider config={wagmiConfig}>
-            <YieldProvider>{children}</YieldProvider>
-          </WagmiProvider>
-        </QueryClientProvider>
-      </SmartWalletsProvider>
-    </PrivyProvider>
+    <MagicProvider>
+      <ZeroDevProvider>
+        <UniversalAccountProvider>
+          <QueryClientProvider client={queryClient}>
+            <WagmiProvider config={wagmiConfig}>
+              <YieldProvider>
+                {children}
+                <LoginEmailModal />
+              </YieldProvider>
+            </WagmiProvider>
+          </QueryClientProvider>
+        </UniversalAccountProvider>
+      </ZeroDevProvider>
+    </MagicProvider>
   );
 }

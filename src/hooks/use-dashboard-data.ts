@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import {
   useVaults,
   useUserPositions,
@@ -65,7 +65,7 @@ function readCache(): DashboardCache | null {
 }
 
 export function useDashboardData(): DashboardData {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as Address | undefined;
 
   const { vaults = [], isLoading: vaultsLoading } = useVaults();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Activity {
   id: string;
@@ -15,7 +15,7 @@ interface Activity {
 }
 
 export function useActivities(limit = 20) {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

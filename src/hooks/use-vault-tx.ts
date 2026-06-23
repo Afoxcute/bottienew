@@ -2,8 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { Address, Hex } from "viem";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { usePrivy } from "@privy-io/react-auth";
+import { useSmartWallets, useAuth } from "@/hooks/use-auth";
 import { useYoClient } from "@yo-protocol/react";
 
 type Step = "idle" | "processing" | "success" | "error";
@@ -18,7 +17,7 @@ export function useVaultDeposit({
   onError?: (err: Error) => void;
 }) {
   const { client } = useSmartWallets();
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const yoClient = useYoClient();
   const [step, setStep] = useState<Step>("idle");
   const [hash, setHash] = useState<Hex | undefined>();
@@ -93,7 +92,7 @@ export function useVaultRedeem({
   onError?: (err: Error) => void;
 }) {
   const { client } = useSmartWallets();
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const yoClient = useYoClient();
   const [step, setStep] = useState<Step>("idle");
   const [hash, setHash] = useState<Hex | undefined>();

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import type { VaultStatsItem } from "@yo-protocol/core";
 import type { DashboardData } from "@/hooks/use-dashboard-data";
@@ -31,7 +31,7 @@ export function BroadsheetLayout({
   onVaultTap,
   onPositionTap,
 }: BroadsheetLayoutProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const { open } = useChatSheet();
 
   const name =

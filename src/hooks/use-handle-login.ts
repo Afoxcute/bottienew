@@ -1,14 +1,14 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 const PENDING_KEY = "bottie:pending-redirect";
 
 export function useHandleLogin() {
   const router = useRouter();
-  const { ready, authenticated, login } = usePrivy();
+  const { ready, authenticated, login } = useAuth();
 
   useEffect(() => {
     if (ready && authenticated && localStorage.getItem(PENDING_KEY)) {

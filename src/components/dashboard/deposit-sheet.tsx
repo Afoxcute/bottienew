@@ -10,7 +10,7 @@ import {
   useTokenBalance,
   usePreviewDeposit,
 } from "@yo-protocol/react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useVaultDeposit } from "@/hooks/use-vault-tx";
 import { formatUsd, formatApy, formatShares, getPrice } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
@@ -32,7 +32,7 @@ export function DepositSheet({
   onClose,
   onSuccess,
 }: DepositSheetProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as Address | undefined;
   const [sliderValue, setSliderValue] = useState(0);
   const [isEditing, setIsEditing] = useState(false);

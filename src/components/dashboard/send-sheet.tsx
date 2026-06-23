@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { parseUnits, parseEther, encodeFunctionData, erc20Abi } from "viem";
 import type { Address, Hex } from "viem";
-import { usePrivy } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useAuth, useSmartWallets } from "@/hooks/use-auth";
 import { useChatSheet } from "@/contexts/chat-context";
 
 const USDC_BASE: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -22,7 +21,7 @@ interface SendSheetProps {
 }
 
 export function SendSheet({ walletAssets, onClose, onSuccess }: SendSheetProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const { client } = useSmartWallets();
   const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as Address | undefined;
 

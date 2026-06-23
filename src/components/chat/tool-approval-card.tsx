@@ -3,8 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { parseUnits, encodeFunctionData, erc20Abi } from "viem";
 import type { Address, Hex } from "viem";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { usePrivy } from "@privy-io/react-auth";
+import { useSmartWallets, useAuth } from "@/hooks/use-auth";
 import { useYoClient } from "@yo-protocol/react";
 import type { DashboardData } from "@/hooks/use-dashboard-data";
 import {
@@ -133,7 +132,7 @@ function SwapDepositPending({
   const apy = formatApy(vault?.yield?.["7d"]);
 
   const { client } = useSmartWallets();
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const yoClient = useYoClient();
   const walletAddress = (user?.smartWallet?.address ??
     user?.wallet?.address) as Address | undefined;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { usePrivy, useLogout } from "@privy-io/react-auth";
+import { useAuth, useLogout } from "@/hooks/use-auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,7 +49,7 @@ export function SettingsSidebar({
   onClose,
   walletBalanceUsd,
 }: SettingsSidebarProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { logout } = useLogout({

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,7 +18,7 @@ import {
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {

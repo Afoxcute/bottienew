@@ -1,6 +1,5 @@
-import { createConfig } from "@privy-io/wagmi";
+import { createConfig, http } from "wagmi";
 import { base, mainnet, arbitrum } from "viem/chains";
-import { http } from "wagmi";
 
 const alchemyKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
 

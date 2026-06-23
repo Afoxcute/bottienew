@@ -9,7 +9,7 @@ import {
   usePreviewRedeem,
   useShareBalance,
 } from "@yo-protocol/react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useVaultRedeem } from "@/hooks/use-vault-tx";
 import { formatUsd, formatShares, assetsToUsd, getPrice } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
@@ -31,7 +31,7 @@ export function WithdrawSheet({
   onClose,
   onSuccess,
 }: WithdrawSheetProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as Address | undefined;
   const [sliderValue, setSliderValue] = useState(0);
 

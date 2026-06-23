@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useCallback, useEffect } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
 import type { VaultStatsItem } from "@yo-protocol/core";
 import type { DashboardData } from "@/hooks/use-dashboard-data";
@@ -26,6 +26,7 @@ interface OverviewScreenProps {
   onAddFunds?: () => void;
   onSend?: () => void;
   onReceive?: () => void;
+  onConvert?: () => void;
 }
 
 /* ── Daily hash for rotating content ─────────────────────── */
@@ -219,8 +220,9 @@ export function OverviewScreen({
   onAddFunds,
   onSend,
   onReceive,
+  onConvert,
 }: OverviewScreenProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const { open } = useChatSheet();
   const { refetch: refetchGoals } = useAppGoals();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -516,6 +518,7 @@ export function OverviewScreen({
                                   { label: "Add", icon: "M8 3v10M3 8h10", onClick: onAddFunds },
                                   { label: "Send", icon: "M8 12V4M5 7l3-3 3 3", onClick: onSend },
                                   { label: "Receive", icon: "M8 4v8M5 9l3 3 3-3", onClick: onReceive },
+                                  { label: "Convert", icon: "M3 6h7l-2-2M13 10H6l2 2", onClick: onConvert },
                                 ].map((action) => (
                                   <button
                                     key={action.label}

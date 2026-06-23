@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ReceiveSheetProps {
   onClose: () => void;
 }
 
 export function ReceiveSheet({ onClose }: ReceiveSheetProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const walletAddress = user?.smartWallet?.address ?? user?.wallet?.address ?? "";
   const [copied, setCopied] = useState(false);
 

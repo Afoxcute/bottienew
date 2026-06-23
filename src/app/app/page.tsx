@@ -3,8 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AnimatePresence } from "framer-motion";
 import type { VaultStatsItem } from "@yo-protocol/core";
-import { usePrivy, useFundWallet } from "@privy-io/react-auth";
-import { base } from "viem/chains";
+import { useAuth } from "@/hooks/use-auth";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useActivities } from "@/hooks/use-activities";
 import { useAppGoals } from "@/contexts/goals-context";
@@ -14,14 +13,14 @@ import { DepositSheet } from "@/components/dashboard/deposit-sheet";
 import { WithdrawSheet } from "@/components/dashboard/withdraw-sheet";
 import { SendSheet } from "@/components/dashboard/send-sheet";
 import { ReceiveSheet } from "@/components/dashboard/receive-sheet";
+import { ConvertSheet } from "@/components/dashboard/convert-sheet";
 
 export default function DashboardPage() {
   const data = useDashboardData();
   const { activities, refetch: refetchActivities } = useActivities();
   const { goals: goalsMap } = useAppGoals();
   const { registerDashboardData, openSidebar } = useChatSheet();
-  const { user } = usePrivy();
-  const { fundWallet } = useFundWallet();
+  const { user } = useAuth();
 
   const walletAddress = user?.smartWallet?.address ?? user?.wallet?.address;
 
@@ -33,6 +32,7 @@ export default function DashboardPage() {
   const [withdrawVault, setWithdrawVault] = useState<VaultStatsItem | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
 
   const handleTransactionSuccess = (clearSheet: () => void) => {
     clearSheet();
@@ -46,17 +46,19 @@ export default function DashboardPage() {
   const handleDepositSuccess = () => handleTransactionSuccess(() => setDepositVault(null));
   const handleWithdrawSuccess = () => handleTransactionSuccess(() => setWithdrawVault(null));
   const handleSendSuccess = () => handleTransactionSuccess(() => setSendOpen(false));
+  const handleConvertSuccess = () => handleTransactionSuccess(() => setConvertOpen(false));
 
   const handleAddFunds = useCallback(() => {
-    if (walletAddress) fundWallet({
-      address: walletAddress,
-      options: {
-        chain: base,
-        asset: "USDC",
-        card: { preferredProvider: "moonpay" },
-      },
+    if (!walletAddress) return;
+    const apiKey = process.env.NEXT_PUBLIC_MOONPAY_API_KEY;
+    if (!apiKey) return;
+    const params = new URLSearchParams({
+      apiKey,
+      currencyCode: "usdc_base",
+      walletAddress,
     });
-  }, [walletAddress, fundWallet]);
+    window.open(`https://buy.moonpay.com?${params}`, "_blank", "noopener,noreferrer");
+  }, [walletAddress]);
 
   const mappedActivities = useMemo(
     () =>
@@ -98,6 +100,7 @@ export default function DashboardPage() {
         onAddFunds={handleAddFunds}
         onSend={() => setSendOpen(true)}
         onReceive={() => setReceiveOpen(true)}
+        onConvert={() => setConvertOpen(true)}
         onRefresh={async () => {
           await Promise.all([
             data.refetchPositions(),
@@ -151,6 +154,16 @@ export default function DashboardPage() {
           <ReceiveSheet
             key="receive"
             onClose={() => setReceiveOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {convertOpen && (
+          <ConvertSheet
+            key="convert"
+            onClose={() => setConvertOpen(false)}
+            onSuccess={handleConvertSuccess}
           />
         )}
       </AnimatePresence>

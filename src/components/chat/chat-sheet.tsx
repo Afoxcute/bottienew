@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useChatSheet } from "@/contexts/chat-context";
 import { MessageBubble } from "./message-bubble";
 import { ThinkingIndicator } from "./thinking-indicator";
@@ -24,7 +24,7 @@ export function ChatSheet({ visible }: ChatSheetProps) {
     setIsStreaming: setCtxStreaming,
     setChatInput,
   } = useChatSheet();
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
 
