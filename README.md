@@ -1,8 +1,8 @@
-# yoyo
+# Bottie
 
 **Onchain savings made easy.**
 
-yoyo is a mobile savings app that lets anyone earn yield on their money without understanding crypto. Powered by [YO Protocol](https://docs.yo.xyz), it replaces the complexity of DeFi with a single AI chat interface. Just tell yoyo what you're saving for, and it handles everything.
+Bottie is a mobile savings app that lets anyone earn yield on their money without understanding crypto. Powered by [YO Protocol](https://docs.yo.xyz), it replaces the complexity of DeFi with a single AI chat interface. Just tell Bottie what you're saving for, and it handles everything.
 
 **[Live App](https://yoyo.s0nderlabs.xyz)** · **[Demo Video](https://www.youtube.com/watch?v=lt3f9EXybj8&t=3s)**
 
@@ -82,7 +82,7 @@ This allowed all 16+ consuming files to swap `usePrivy` → `useAuth` with impor
 
 ## YO Protocol integration
 
-yoyo integrates `@yo-protocol/react` to interact with YO's ERC-4626 vaults on Base.
+Bottie integrates `@yo-protocol/react` to interact with YO's ERC-4626 vaults on Base.
 
 **Supported vaults:**
 
@@ -215,8 +215,8 @@ src/
 ### Setup
 
 ```bash
-git clone https://github.com/s0nderlabs/yoyo.git
-cd yoyo
+git clone https://github.com/s0nderlabs/bottie.git
+cd bottie
 yarn install
 ```
 
