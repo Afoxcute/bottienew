@@ -12,6 +12,8 @@ import {
 import { formatApy } from "@/lib/format";
 import { db } from "@/lib/db";
 import { goals } from "@/lib/db/schema";
+import { getX402Agent } from "@/lib/x402-agent";
+import { OPENFORT_API } from "@/lib/openfort";
 
 const YO_API = "https://api.yo.xyz/api/v1";
 
@@ -308,6 +310,105 @@ export function createTools(walletAddress?: string, userId?: string) {
           }));
         } catch (err: any) {
           return { error: err?.message || "Failed to fetch goals" };
+        }
+      },
+    }),
+
+    get_premium_insights: tool({
+      description:
+        "Get premium yield analytics and market intelligence from Bottie's AI advisor service. " +
+        "Returns trend direction (rising/falling/stable), risk scores, top savings pick, and live " +
+        "ETH/BTC prices. Automatically paid for by Bottie's AI treasury via x402 micro-payment — " +
+        "call this when recommending the best savings account or when the user asks about rates or market conditions.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const walletId = process.env.OPENFORT_BACKEND_WALLET_ID;
+        if (!walletId) {
+          return { error: "Premium insights not available — Openfort backend wallet not configured" };
+        }
+
+        const appUrl =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          (process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : "http://localhost:3000");
+
+        try {
+          const { fetchWithPayment } = await getX402Agent();
+          const res = await fetchWithPayment(`${appUrl}/api/market-data`);
+          if (!res.ok) {
+            const text = await res.text();
+            return { error: `Premium analytics returned ${res.status}: ${text}` };
+          }
+          return await res.json();
+        } catch (err: any) {
+          return { error: err?.message || "Premium analytics unavailable" };
+        }
+      },
+    }),
+
+    award_goal_reward: tool({
+      description:
+        "Award a 0.1 USDC bonus to the user when they achieve a savings goal. " +
+        "Call this after confirming the user has reached their savings target. " +
+        "Bottie's AI treasury (Openfort backend wallet) sends the reward automatically.",
+      inputSchema: z.object({
+        goalName: z
+          .string()
+          .describe("The name of the goal the user achieved (e.g. 'Japan trip')"),
+        recipientAddress: z
+          .string()
+          .describe("The user's wallet address to send the USDC reward to"),
+      }),
+      execute: async ({ goalName, recipientAddress }) => {
+        if (!recipientAddress) {
+          return { error: "No wallet address provided" };
+        }
+
+        const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;
+        const secretKey = process.env.OPENFORT_SECRET_KEY;
+
+        if (!backendWalletId || !secretKey) {
+          return { error: "AI treasury not configured — reward unavailable" };
+        }
+
+        // ERC-20 transfer(address,uint256) calldata
+        const selector = "a9059cbb";
+        const paddedTo = recipientAddress.replace(/^0x/i, "").padStart(64, "0");
+        const paddedAmount = BigInt("100000").toString(16).padStart(64, "0"); // 0.1 USDC (6 decimals)
+        const calldata = `0x${selector}${paddedTo}${paddedAmount}`;
+
+        try {
+          const res = await fetch(`${OPENFORT_API}/v1/transaction_intents`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${secretKey}`,
+            },
+            body: JSON.stringify({
+              chainId: DEFAULT_CHAIN_ID,
+              account: backendWalletId,
+              interactions: [{ to: BASE_TOKENS.USDC, data: calldata }],
+            }),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            return { error: `Reward transaction failed: ${text}` };
+          }
+
+          const intent = await res.json();
+          return {
+            success: true,
+            amount: "0.1 USDC",
+            goalName,
+            recipient: recipientAddress,
+            intentId: intent.id,
+            txHash: intent.response?.transactionHash ?? null,
+            message: `🎉 Sent 0.1 USDC reward for achieving "${goalName}"!`,
+          };
+        } catch (err: any) {
+          return { error: err?.message || "Failed to send reward" };
         }
       },
     }),

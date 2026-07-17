@@ -298,6 +298,68 @@ Particle Universal Account requires the Magic EOA to be delegated to UA's contra
 | txHash | text (nullable) |
 | createdAt | timestamp |
 
+## Openfort backend wallets + x402 agentic payments
+
+Bottie uses **Openfort** and **x402** together to power its AI advisor with autonomous micro-payments — invisible to the end user.
+
+### Architecture
+
+```
+User → Chat → AI advisor
+                ↓
+      calls get_premium_insights tool
+                ↓
+      server-side x402 paying client (x402-agent.ts)
+      Openfort backend wallet signs ERC-3009 payment
+                ↓
+      /api/market-data  ← withX402 paywall (0.001 USDC)
+      receives 402 → Openfort signs → retries → gets data
+                ↓
+      returns premium yield analytics to AI
+```
+
+### Openfort backend wallet
+
+`src/lib/openfort.ts` — singleton Openfort client  
+`src/lib/openfort-account.ts` — bridges Openfort's TEE-secured signing API to a viem `LocalAccount`:
+
+- For each signing request, the EIP-712 hash is computed client-side with viem (`hashTypedData`)
+- Only the hash is sent to Openfort's `/v2/accounts/backend/{id}/sign` endpoint
+- The private key **never leaves Openfort's Trusted Execution Environment**
+
+**Two uses of the backend wallet:**
+1. **x402 payment client** — autonomously pays 0.001 USDC per premium data request via ERC-3009 `transferWithAuthorization`
+2. **Goal achievement rewards** — sends 0.1 USDC bonus to users who hit a savings goal, triggered by the AI via the `award_goal_reward` tool
+
+### x402 seller (paywall)
+
+`src/app/api/market-data/route.ts` — premium yield analytics endpoint protected by `withX402` from `@x402/next`. Returns vault trend direction, risk scores, top pick, and live ETH/BTC prices.
+
+`src/lib/x402-server.ts` — `x402ResourceServer` with `ExactEvmScheme` registered for `eip155:*`.
+
+### x402 buyer (paying agent)
+
+`src/lib/x402-agent.ts` — lazy singleton that:
+1. Fetches the Openfort backend wallet address from the Openfort API
+2. Creates a viem `LocalAccount` backed by `createOpenfortAccount()`
+3. Registers `ExactEvmScheme(signer)` on an `x402Client`
+4. Returns `wrapFetchWithPayment(fetch, client)` — a drop-in fetch replacement that auto-handles 402 responses
+
+### AI tools added
+
+| Tool | Type | Description |
+|------|------|-------------|
+| `get_premium_insights` | Server | Calls `/api/market-data` via x402; Openfort backend wallet auto-pays |
+| `award_goal_reward` | Server | Sends 0.1 USDC to user via Openfort transaction intent when goal achieved |
+
+### Setup
+
+1. Create an account at [dashboard.openfort.io](https://dashboard.openfort.io)
+2. Generate a **Secret Key** and **Wallet Secret**
+3. Create a **Backend Wallet** — copy its `acc_*` ID as `OPENFORT_BACKEND_WALLET_ID`
+4. Fund the backend wallet with a small amount of USDC on Base (for rewards + x402 payments)
+5. Set `X402_PAYTO_ADDRESS` to any address you control on Base (receives 0.001 USDC per premium query)
+
 ## Migration from Privy
 
 The following changes were made when migrating from Privy + wagmi to Magic + ZeroDev + Particle UA:
