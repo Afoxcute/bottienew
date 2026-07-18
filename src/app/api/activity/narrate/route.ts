@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateText } from "ai";
-import { deepseek } from "@ai-sdk/deepseek";
+import { openai } from "@ai-sdk/openai";
 import { eq, desc } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -37,7 +37,7 @@ export async function GET() {
     }));
 
     const { text } = await generateText({
-      model: deepseek("deepseek-chat"),
+      model: openai("gpt-4o-mini"),
       system:
         "You are a concise financial narrator for a savings app. Summarize the user's recent activity in 2-3 sentences. Be warm, editorial, no DeFi jargon. Mention totals, patterns, and timeframes. Keep it under 50 words. Do not use emojis. Do not use any markdown formatting. Use simple token names: say ETH not WETH, say USD not USDC, say BTC not cbBTC. Never repeat a token name twice in a row.",
       prompt: JSON.stringify(data),

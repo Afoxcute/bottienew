@@ -24,6 +24,10 @@ export const X402_NETWORK = "eip155:84532" as const;
 export const X402_PRICE = "$0.001";
 
 /** Address that receives x402 payments (Bottie's treasury) */
-export const X402_PAYTO_ADDRESS = (
-  process.env.X402_PAYTO_ADDRESS ?? ""
-) as `0x${string}`;
+const _payTo = process.env.X402_PAYTO_ADDRESS ?? "";
+if (!_payTo) {
+  console.error("[x402] X402_PAYTO_ADDRESS env var is not set — /api/market-data will be unavailable");
+} else if (!/^0x[0-9a-fA-F]{40}$/.test(_payTo)) {
+  console.error("[x402] X402_PAYTO_ADDRESS is not a valid Ethereum address — /api/market-data will be unavailable");
+}
+export const X402_PAYTO_ADDRESS = _payTo as `0x${string}`;

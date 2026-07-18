@@ -126,7 +126,10 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     };
 
     fetchAccountData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      setLoading(false);
+    };
   }, [universalAccount, userAddress, refreshDelegationStatus]);
 
   const refreshBalance = useCallback(async () => {
@@ -190,7 +193,13 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
           authorizationList: [authorization],
         });
 
-        await refreshDelegationStatus();
+        // Delegation is confirmed on-chain; a status-refresh failure must not
+        // bubble up as a delegation failure — optimistically mark delegated.
+        try {
+          await refreshDelegationStatus();
+        } catch {
+          setIsDelegated(true);
+        }
       } finally {
         isDelegatingRef.current = null;
       }

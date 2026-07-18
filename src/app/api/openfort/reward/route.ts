@@ -15,6 +15,11 @@ import { OPENFORT_API } from "@/lib/openfort";
 const REWARD_AMOUNT_ATOMIC = "100000";
 const REWARD_AMOUNT_DISPLAY = "0.1 USDC";
 
+// Per-process 24-hour cooldown per wallet. Resets on serverless cold start,
+// which is acceptable — the authorization check below is the primary guard.
+const rewardCooldowns = new Map<string, number>();
+const REWARD_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 /** Encode ERC-20 transfer(address,uint256) calldata without viem to keep this route lightweight. */
 function encodeTransfer(to: string, amountHex: string): string {
   const selector = "a9059cbb"; // keccak256("transfer(address,uint256)") first 4 bytes
@@ -24,8 +29,10 @@ function encodeTransfer(to: string, amountHex: string): string {
 }
 
 export async function POST(req: Request) {
+  let sessionWalletAddress: string;
   try {
-    await verifyAuth();
+    const { userId } = await verifyAuth();
+    sessionWalletAddress = userId;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -47,6 +54,23 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "recipientAddress is not a valid Ethereum address" },
       { status: 400 },
+    );
+  }
+
+  // Ensure the reward goes to the authenticated user's own wallet
+  if (recipientAddress.toLowerCase() !== sessionWalletAddress.toLowerCase()) {
+    return NextResponse.json(
+      { error: "Recipient address does not match your wallet" },
+      { status: 403 },
+    );
+  }
+
+  // 24-hour per-wallet cooldown (in-process; resets on cold start)
+  const lastReward = rewardCooldowns.get(sessionWalletAddress.toLowerCase());
+  if (lastReward && Date.now() - lastReward < REWARD_COOLDOWN_MS) {
+    return NextResponse.json(
+      { error: "Reward already sent — eligible again in 24 hours" },
+      { status: 429 },
     );
   }
 
@@ -91,6 +115,8 @@ export async function POST(req: Request) {
   }
 
   const intent = await res.json();
+
+  rewardCooldowns.set(sessionWalletAddress.toLowerCase(), Date.now());
 
   return NextResponse.json({
     success: true,

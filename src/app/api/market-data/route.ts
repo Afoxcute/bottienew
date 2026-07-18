@@ -23,8 +23,8 @@ const COINGECKO =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handler = async (_: NextRequest): Promise<NextResponse<any>> => {
   const [vaultRes, priceRes] = await Promise.all([
-    fetch(`${YO_API}/vault/stats`),
-    fetch(COINGECKO),
+    fetch(`${YO_API}/vault/stats`, { signal: AbortSignal.timeout(5000) }),
+    fetch(COINGECKO, { signal: AbortSignal.timeout(5000) }),
   ]);
 
   if (!vaultRes.ok) {
@@ -89,20 +89,28 @@ const handler = async (_: NextRequest): Promise<NextResponse<any>> => {
   return body;
 };
 
-export const GET = withX402(
-  handler,
-  {
-    accepts: [
+const isX402Configured = /^0x[0-9a-fA-F]{40}$/.test(X402_PAYTO_ADDRESS);
+
+export const GET = isX402Configured
+  ? withX402(
+      handler,
       {
-        scheme: "exact",
-        price: X402_PRICE,
-        network: X402_NETWORK,
-        payTo: X402_PAYTO_ADDRESS,
+        accepts: [
+          {
+            scheme: "exact",
+            price: X402_PRICE,
+            network: X402_NETWORK,
+            payTo: X402_PAYTO_ADDRESS,
+          },
+        ],
+        description:
+          "Bottie premium yield analytics — real-time vault insights, trend data, risk scores, and AI-ready market context. Paid via x402 micro-payment.",
+        mimeType: "application/json",
       },
-    ],
-    description:
-      "Bottie premium yield analytics — real-time vault insights, trend data, risk scores, and AI-ready market context. Paid via x402 micro-payment.",
-    mimeType: "application/json",
-  },
-  x402Server,
-);
+      x402Server,
+    )
+  : async () =>
+      NextResponse.json(
+        { error: "Premium analytics not configured" },
+        { status: 503 },
+      );

@@ -102,13 +102,18 @@ export function MagicProvider({ children }: { children: ReactNode }) {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const loginCallbackRef = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
+  // Tracks the in-flight requestLogin promise so concurrent calls get the same promise
+  // rather than overwriting loginCallbackRef and stranding the first caller forever.
+  const loginPromiseRef = useRef<Promise<void> | null>(null);
 
   const requestLogin = useCallback(() => {
+    if (loginPromiseRef.current) return loginPromiseRef.current;
     setLoginError(null);
     setLoginModalOpen(true);
-    return new Promise<void>((resolve, reject) => {
+    loginPromiseRef.current = new Promise<void>((resolve, reject) => {
       loginCallbackRef.current = { resolve, reject };
     });
+    return loginPromiseRef.current;
   }, []);
 
   const submitLoginEmail = useCallback(
@@ -119,6 +124,7 @@ export function MagicProvider({ children }: { children: ReactNode }) {
         setLoginModalOpen(false);
         loginCallbackRef.current?.resolve();
         loginCallbackRef.current = null;
+        loginPromiseRef.current = null;
       } catch (err) {
         // Never expose raw SDK error strings to the consumer UI
         const msg = err instanceof Error ? err.message.toLowerCase() : "";
@@ -128,6 +134,7 @@ export function MagicProvider({ children }: { children: ReactNode }) {
           setLoginError(null);
           loginCallbackRef.current?.reject(new Error("Login cancelled"));
           loginCallbackRef.current = null;
+          loginPromiseRef.current = null;
           return;
         }
         setLoginError("Something went wrong — please try again.");
@@ -141,6 +148,7 @@ export function MagicProvider({ children }: { children: ReactNode }) {
     setLoginError(null);
     loginCallbackRef.current?.reject(new Error("Login cancelled"));
     loginCallbackRef.current = null;
+    loginPromiseRef.current = null;
   }, []);
 
   const value = useMemo(

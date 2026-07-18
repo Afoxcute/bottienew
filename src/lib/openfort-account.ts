@@ -27,6 +27,9 @@ async function openfortSign(walletId: string, hash: Hash): Promise<Hex> {
     throw new Error(`Openfort sign failed (${res.status}): ${text}`);
   }
   const json = await res.json();
+  if (!json.signature || typeof json.signature !== "string") {
+    throw new Error("Openfort sign: response missing signature field");
+  }
   return json.signature as Hex;
 }
 

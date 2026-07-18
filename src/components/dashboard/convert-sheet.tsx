@@ -47,11 +47,11 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
       setStep("success");
       onSuccess();
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error && err.message && !/cancel|reject/i.test(err.message)
-          ? err.message
-          : null;
-      setErrorMsg(msg);
+      if (err instanceof Error && /cancel|reject/i.test(err.message)) {
+        setStep("idle");
+        return;
+      }
+      setErrorMsg(null);
       setStep("error");
     }
   }, [canConvert, universalAccount, isDelegated, ensureDelegated, destChain, amount, signAndSend, onSuccess]);

@@ -23,7 +23,9 @@ export function useHandleLogin() {
       return;
     }
     localStorage.setItem(PENDING_KEY, "1");
-    login();
+    login().catch(() => {
+      localStorage.removeItem(PENDING_KEY);
+    });
   };
 
   return handleLogin;

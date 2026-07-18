@@ -1,4 +1,4 @@
-import { deepseek } from "@ai-sdk/deepseek";
+import { openai } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, stepCountIs, type UIMessage } from "ai";
 import { createTools } from "@/lib/ai/tools";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const windowed = windowMessages(messages);
 
   const result = streamText({
-    model: deepseek("deepseek-chat"),
+    model: openai("gpt-4o-mini"),
     system: buildSystemPrompt({
       userName,
       walletAddress,
