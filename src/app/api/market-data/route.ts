@@ -20,12 +20,19 @@ const YO_API = "https://api.yo.xyz/api/v1";
 const COINGECKO =
   "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,usd-coin,coinbase-wrapped-btc,euro-coin&vs_currencies=usd&include_24hr_change=true";
 
-const handler = async (_: NextRequest) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const handler = async (_: NextRequest): Promise<NextResponse<any>> => {
   const [vaultRes, priceRes] = await Promise.all([
     fetch(`${YO_API}/vault/stats`),
     fetch(COINGECKO),
   ]);
 
+  if (!vaultRes.ok) {
+    return NextResponse.json(
+      { error: "Vault data temporarily unavailable" },
+      { status: 502 },
+    );
+  }
   const vaultJson = await vaultRes.json();
   const prices = priceRes.ok ? await priceRes.json() : {};
 
@@ -60,7 +67,7 @@ const handler = async (_: NextRequest) => {
     (a, b) => parseFloat(b.apy7d) - parseFloat(a.apy7d),
   );
 
-  return NextResponse.json({
+  const body = NextResponse.json({
     generatedAt: new Date().toISOString(),
     poweredBy: "Bottie Premium Analytics · paid via x402 · signed by Openfort",
     vaultInsights,
@@ -78,6 +85,8 @@ const handler = async (_: NextRequest) => {
       USDC: { usd: prices?.["usd-coin"]?.usd ?? 1 },
     },
   });
+  body.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+  return body;
 };
 
 export const GET = withX402(

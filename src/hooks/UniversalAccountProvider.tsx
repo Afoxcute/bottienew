@@ -13,6 +13,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useMagicAuth } from "./MagicProvider";
@@ -98,10 +99,13 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (!universalAccount || !userAddress) return;
 
+    let cancelled = false;
+
     const fetchAccountData = async () => {
       setLoading(true);
       try {
         const options = await universalAccount.getSmartAccountOptions();
+        if (cancelled) return;
         setAccountInfo({
           ownerAddress: userAddress,
           evmSmartAccount: options.smartAccountAddress || "",
@@ -109,17 +113,20 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
         });
 
         await refreshDelegationStatus();
+        if (cancelled) return;
 
         const assets = await universalAccount.getPrimaryAssets();
+        if (cancelled) return;
         setPrimaryAssets(assets);
       } catch (err) {
         console.error("Failed to fetch UA data:", err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchAccountData();
+    return () => { cancelled = true; };
   }, [universalAccount, userAddress, refreshDelegationStatus]);
 
   const refreshBalance = useCallback(async () => {
@@ -144,6 +151,10 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     [magic],
   );
 
+  // Stores the in-flight delegation Promise so concurrent callers await the same work
+  // rather than returning void and proceeding with an undelegated account.
+  const isDelegatingRef = useRef<Promise<void> | null>(null);
+
   // Pre-delegate the EOA on Base via a Type-4 transaction.
   // Magic SDK cannot sign EIP-7702 authorizations with chainId 0 (chain-agnostic),
   // so we pre-delegate with chain-specific auth before creating UA transactions.
@@ -152,25 +163,41 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       throw new Error("Universal Account or wallet not ready");
     }
 
+    // Skip only when already delegated; proceed when no deployment entry exists
+    // (first-time users) or when the deployment exists but isn't delegated yet.
     const deployments = await universalAccount.getEIP7702Deployments();
     const baseDeployment = deployments.find((d: any) => d.chainId === BASE_CHAIN_ID);
-    if (!baseDeployment || (baseDeployment as any).isDelegated) {
-      await refreshDelegationStatus();
+    if ((baseDeployment as any)?.isDelegated) {
+      setIsDelegated(true);
       return;
     }
 
-    await magic.evm.switchChain(BASE_CHAIN_ID);
+    // Return the same in-flight promise so concurrent callers all wait for the
+    // single delegation transaction rather than each returning void immediately.
+    if (isDelegatingRef.current) return isDelegatingRef.current;
 
-    const [auth] = await universalAccount.getEIP7702Auth([BASE_CHAIN_ID]);
-    const authorization = await signEip7702Auth(auth.address, BASE_CHAIN_ID, auth.nonce + 1);
+    const promise = (async () => {
+      try {
+        await magic.evm.switchChain(BASE_CHAIN_ID);
 
-    await magic.wallet.send7702Transaction({
-      to: userAddress,
-      data: "0x",
-      authorizationList: [authorization],
-    });
+        const [auth] = await universalAccount.getEIP7702Auth([BASE_CHAIN_ID]);
+        if (!auth) throw new Error("Failed to get EIP-7702 authorization for Base");
+        const authorization = await signEip7702Auth(auth.address, BASE_CHAIN_ID, auth.nonce);
 
-    await refreshDelegationStatus();
+        await magic.wallet.send7702Transaction({
+          to: userAddress,
+          data: "0x",
+          authorizationList: [authorization],
+        });
+
+        await refreshDelegationStatus();
+      } finally {
+        isDelegatingRef.current = null;
+      }
+    })();
+
+    isDelegatingRef.current = promise;
+    return promise;
   }, [universalAccount, magic, userAddress, signEip7702Auth, refreshDelegationStatus]);
 
   const signAndSend = useCallback(
@@ -181,12 +208,15 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
 
       type EIP7702Authorization = { userOpHash: string; signature: string };
       const authorizations: EIP7702Authorization[] = [];
-      const nonceMap = new Map<number, string>();
+      // Key by chain:address:nonce so userOps targeting different contracts at the
+      // same nonce don't share a signature (wrong address in the signed tuple).
+      const sigCache = new Map<string, string>();
 
       if (transaction.userOps) {
         for (const userOp of transaction.userOps) {
           if (userOp.eip7702Auth && !userOp.eip7702Delegated) {
-            let signatureSerialized = nonceMap.get(userOp.eip7702Auth.nonce);
+            const cacheKey = `${userOp.eip7702Auth.chainId ?? userOp.chainId}:${userOp.eip7702Auth.address}:${userOp.eip7702Auth.nonce}`;
+            let signatureSerialized = sigCache.get(cacheKey);
 
             if (!signatureSerialized) {
               const authorization = await signEip7702Auth(
@@ -201,7 +231,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
                 v: authorization.v,
               });
               signatureSerialized = sig.serialized;
-              nonceMap.set(userOp.eip7702Auth.nonce, signatureSerialized);
+              sigCache.set(cacheKey, signatureSerialized);
             }
 
             if (signatureSerialized) {

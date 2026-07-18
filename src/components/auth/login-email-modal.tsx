@@ -35,7 +35,7 @@ export function LoginEmailModal() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] bg-ink/20"
-            onClick={() => !submitting && cancelLogin()}
+            onClick={cancelLogin}
           />
           <motion.div
             key="login-modal"
@@ -66,7 +66,6 @@ export function LoginEmailModal() {
                 <button
                   type="button"
                   onClick={cancelLogin}
-                  disabled={submitting}
                   className="flex-1 rounded-full border border-border py-2.5 font-body text-sm text-ink-light"
                 >
                   Cancel

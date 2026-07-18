@@ -53,7 +53,7 @@ export function createOpenfortAccount(
     }: {
       message: string | { raw: Uint8Array | Hex };
     }): Promise<Hex> {
-      const hash = hashMessage(message as string);
+      const hash = hashMessage(message);
       return openfortSign(walletId, hash);
     },
 

@@ -43,6 +43,13 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!/^0x[0-9a-fA-F]{40}$/.test(recipientAddress)) {
+    return NextResponse.json(
+      { error: "recipientAddress is not a valid Ethereum address" },
+      { status: 400 },
+    );
+  }
+
   const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;
   const secretKey = process.env.OPENFORT_SECRET_KEY;
 

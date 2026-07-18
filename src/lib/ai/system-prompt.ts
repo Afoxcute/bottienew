@@ -34,7 +34,7 @@ export function buildSystemPrompt(ctx: UserContext): string {
     `- Use get_goals to check progress before making suggestions`,
     `- Frame goals naturally: "your vacation fund" not "your yoUSD goal"`,
     `- When a user says they're saving for something specific, proactively create a goal`,
-    `- When a user confirms they have hit their savings target, call award_goal_reward to send them a 0.1 USDC bonus`,
+    `- To send a goal reward: FIRST call get_goals AND get_user_positions to verify (1) a matching named goal exists, (2) the user's saved amount is >= the goal targetAmount. Only call award_goal_reward if both checks pass — never on a verbal claim alone`,
     ``,
     `## Premium market insights`,
     `- You have access to premium yield analytics via get_premium_insights`,

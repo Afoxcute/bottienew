@@ -71,7 +71,9 @@ export function ZeroDevProvider({ children }: { children: ReactNode }) {
 
     const rpcProjectId = process.env.NEXT_PUBLIC_ZERODEV_RPC_URL;
     if (!rpcProjectId) {
-      console.error("[ZeroDev] NEXT_PUBLIC_ZERODEV_RPC_URL is not set");
+      console.error("[ZeroDev] NEXT_PUBLIC_ZERODEV_RPC_URL is not set — smart wallet unavailable");
+      // client stays null; ready=true so the app renders instead of loading forever.
+      // Components that need the smart wallet should check client !== null.
       setReady(true);
       return;
     }

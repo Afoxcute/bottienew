@@ -25,6 +25,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<Step>("idle");
   const [transactionId, setTransactionId] = useState<string | undefined>();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
   const canConvert = amountNum > 0 && step === "idle" && !!universalAccount;
@@ -45,7 +46,12 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
       setTransactionId((result as any)?.transactionId);
       setStep("success");
       onSuccess();
-    } catch {
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.message && !/cancel|reject/i.test(err.message)
+          ? err.message
+          : null;
+      setErrorMsg(msg);
       setStep("error");
     }
   }, [canConvert, universalAccount, isDelegated, ensureDelegated, destChain, amount, signAndSend, onSuccess]);
@@ -59,7 +65,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
   useEffect(() => {
     setActiveSheet({
       type: "swap",
-      onConfirm: () => (step === "error" ? setStep("idle") : handleConvertRef.current()),
+      onConfirm: () => { if (step === "error") { setStep("idle"); setErrorMsg(null); } else { handleConvertRef.current(); } },
       onCancel: () => onCloseRef.current(),
       step,
     });
@@ -163,7 +169,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
 
             {step === "error" && (
               <p className="mt-4 text-center font-mono text-xs text-fail">
-                Conversion failed. Try again.
+                {errorMsg ?? "Conversion failed. Try again."}
               </p>
             )}
           </>

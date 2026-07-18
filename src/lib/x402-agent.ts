@@ -15,8 +15,15 @@ import { createOpenfortAccount } from "./openfort-account";
 import { OPENFORT_API } from "./openfort";
 import type { Address } from "viem";
 
-let _fetchWithPayment: ReturnType<typeof wrapFetchWithPayment> | null = null;
-let _httpClient: x402HTTPClient | null = null;
+type Agent = {
+  fetchWithPayment: ReturnType<typeof wrapFetchWithPayment>;
+  httpClient: x402HTTPClient;
+};
+
+let _agent: Agent | null = null;
+// Single in-flight promise prevents concurrent callers from each building a
+// separate ExactEvmScheme signer (which would race on signing the same nonce).
+let _initPromise: Promise<Agent> | null = null;
 
 async function resolveBackendWalletAddress(): Promise<{
   id: string;
@@ -43,24 +50,26 @@ async function resolveBackendWalletAddress(): Promise<{
   return { id: walletId, address: json.address as Address };
 }
 
-export async function getX402Agent(): Promise<{
-  fetchWithPayment: ReturnType<typeof wrapFetchWithPayment>;
-  httpClient: x402HTTPClient;
-}> {
-  if (_fetchWithPayment && _httpClient) {
-    return { fetchWithPayment: _fetchWithPayment, httpClient: _httpClient };
+export async function getX402Agent(): Promise<Agent> {
+  if (_agent) return _agent;
+
+  if (!_initPromise) {
+    _initPromise = (async () => {
+      const { id, address } = await resolveBackendWalletAddress();
+      const signer = createOpenfortAccount(id, address);
+      const client = new x402Client();
+      client.register("eip155:*", new ExactEvmScheme(signer));
+      const agent: Agent = {
+        fetchWithPayment: wrapFetchWithPayment(fetch, client),
+        httpClient: new x402HTTPClient(client),
+      };
+      _agent = agent;
+      return agent;
+    })().catch((err) => {
+      _initPromise = null; // allow retry after transient failures
+      throw err;
+    });
   }
 
-  const { id, address } = await resolveBackendWalletAddress();
-
-  // Create a viem LocalAccount that delegates signing to Openfort's TEE
-  const signer = createOpenfortAccount(id, address);
-
-  const client = new x402Client();
-  client.register("eip155:*", new ExactEvmScheme(signer));
-
-  _fetchWithPayment = wrapFetchWithPayment(fetch, client);
-  _httpClient = new x402HTTPClient(client);
-
-  return { fetchWithPayment: _fetchWithPayment, httpClient: _httpClient };
+  return _initPromise;
 }

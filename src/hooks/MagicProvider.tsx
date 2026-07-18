@@ -101,13 +101,13 @@ export function MagicProvider({ children }: { children: ReactNode }) {
 
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const resolveLoginRef = useRef<(() => void) | null>(null);
+  const loginCallbackRef = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
 
   const requestLogin = useCallback(() => {
     setLoginError(null);
     setLoginModalOpen(true);
-    return new Promise<void>((resolve) => {
-      resolveLoginRef.current = resolve;
+    return new Promise<void>((resolve, reject) => {
+      loginCallbackRef.current = { resolve, reject };
     });
   }, []);
 
@@ -117,10 +117,20 @@ export function MagicProvider({ children }: { children: ReactNode }) {
       try {
         await login(email);
         setLoginModalOpen(false);
-        resolveLoginRef.current?.();
-        resolveLoginRef.current = null;
+        loginCallbackRef.current?.resolve();
+        loginCallbackRef.current = null;
       } catch (err) {
-        setLoginError(err instanceof Error ? err.message : "Login failed");
+        // Never expose raw SDK error strings to the consumer UI
+        const msg = err instanceof Error ? err.message.toLowerCase() : "";
+        if (msg.includes("cancel") || msg.includes("reject")) {
+          // Magic's own OTP UI was dismissed — treat as user-initiated cancel
+          setLoginModalOpen(false);
+          setLoginError(null);
+          loginCallbackRef.current?.reject(new Error("Login cancelled"));
+          loginCallbackRef.current = null;
+          return;
+        }
+        setLoginError("Something went wrong — please try again.");
       }
     },
     [login],
@@ -129,7 +139,8 @@ export function MagicProvider({ children }: { children: ReactNode }) {
   const cancelLogin = useCallback(() => {
     setLoginModalOpen(false);
     setLoginError(null);
-    resolveLoginRef.current = null;
+    loginCallbackRef.current?.reject(new Error("Login cancelled"));
+    loginCallbackRef.current = null;
   }, []);
 
   const value = useMemo(

@@ -365,6 +365,10 @@ export function createTools(walletAddress?: string, userId?: string) {
           return { error: "No wallet address provided" };
         }
 
+        if (!/^0x[0-9a-fA-F]{40}$/.test(recipientAddress)) {
+          return { error: "Invalid wallet address" };
+        }
+
         const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;
         const secretKey = process.env.OPENFORT_SECRET_KEY;
 
@@ -393,8 +397,7 @@ export function createTools(walletAddress?: string, userId?: string) {
           });
 
           if (!res.ok) {
-            const text = await res.text();
-            return { error: `Reward transaction failed: ${text}` };
+            return { error: "Reward could not be sent — please try again later" };
           }
 
           const intent = await res.json();
