@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import type { Address, Hex } from "viem";
 import { useAuth } from "@/hooks/use-auth";
 import { simulateTx } from "@/lib/sim";
+import { recordDelta } from "@/lib/sim-ledger";
 import { useChatSheet } from "@/contexts/chat-context";
 
 
@@ -44,6 +45,7 @@ export function SendSheet({ walletAssets, onClose, onSuccess }: SendSheetProps) 
     try {
       const txHash = await simulateTx();
       setHash(txHash);
+      if (walletAddress) recordDelta(walletAddress, token, -amountNum);
       setStep("success");
       onSuccess();
     } catch {

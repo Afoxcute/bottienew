@@ -8,6 +8,8 @@ import { VAULT_FRIENDLY_NAMES } from "@/lib/constants";
 import { simulateTx } from "@/lib/sim";
 import { formatApy } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
+import { recordDelta } from "@/lib/sim-ledger";
+import { useAuth } from "@/hooks/use-auth";
 import { useVaultDeposit, useVaultRedeem } from "@/hooks/use-vault-tx";
 import { useChatSheet } from "@/contexts/chat-context";
 
@@ -137,6 +139,9 @@ function SwapDepositPending({
     [addToolResult, toolCallId, toolKey],
   );
 
+  const { user } = useAuth();
+  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
+
   const handleConfirm = useCallback(async () => {
     setExecuting(true);
     try {
@@ -150,6 +155,7 @@ function SwapDepositPending({
         ...(vaultId ? { vaultId } : {}),
         txHash,
       });
+      if (walletAddress) recordDelta(walletAddress, tokenSym, -parseFloat(sellAmount) || 0);
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     } catch (err: any) {
@@ -157,7 +163,7 @@ function SwapDepositPending({
     } finally {
       setExecuting(false);
     }
-  }, [sellToken, sellAmount, vaultId, isSwapOnly, sendResult, dashboardData]);
+  }, [sellToken, sellAmount, vaultId, isSwapOnly, sendResult, dashboardData, walletAddress]);
 
   const handleCancel = useCallback(() => {
     sendResult({ success: false, error: "User cancelled" });
@@ -226,6 +232,8 @@ function PendingApproval({
   dashboardData: DashboardData | null;
 }) {
   const vaultAddress = vault?.contracts?.vaultAddress as Address | undefined;
+  const { user } = useAuth();
+  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
 
   const sendResult = (output: unknown) =>
     addToolResult({ tool: toolName, toolCallId, output });
@@ -235,6 +243,7 @@ function PendingApproval({
     onConfirmed: (hash) => {
       sendResult({ success: true, txHash: hash });
       logActivity({ type: "deposit", amount, tokenSymbol, vaultId, txHash: hash });
+      if (walletAddress) recordDelta(walletAddress, tokenSymbol, -parseFloat(amount));
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     },
@@ -251,6 +260,7 @@ function PendingApproval({
     onConfirmed: (hash) => {
       sendResult({ success: true, txHash: hash });
       logActivity({ type: "withdraw", amount, tokenSymbol, vaultId, txHash: hash });
+      if (walletAddress) recordDelta(walletAddress, tokenSymbol, +parseFloat(amount));
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     },

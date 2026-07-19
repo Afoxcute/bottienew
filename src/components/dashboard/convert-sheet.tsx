@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useUniversalAccount } from "@/hooks/UniversalAccountProvider";
+import { useAuth } from "@/hooks/use-auth";
 import { simulateTx } from "@/lib/sim";
+import { recordDelta } from "@/lib/sim-ledger";
 import { useChatSheet } from "@/contexts/chat-context";
 
 type Step = "idle" | "processing" | "success" | "error";
@@ -22,6 +24,8 @@ interface ConvertSheetProps {
 
 export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
   const { isDelegated } = useUniversalAccount();
+  const { user } = useAuth();
+  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
   const [destChain, setDestChain] = useState<DestChain>("solana");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<Step>("idle");
@@ -37,6 +41,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
     try {
       const txHash = await simulateTx();
       setTransactionId(txHash);
+      if (walletAddress) recordDelta(walletAddress, "USDC", -amountNum);
       setStep("success");
       onSuccess();
     } catch (err: unknown) {

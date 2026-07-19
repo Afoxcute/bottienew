@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -11,6 +11,7 @@ import {
 import type { VaultStatsItem, UserVaultPosition } from "@yo-protocol/core";
 import type { Address } from "viem";
 import { DEFAULT_CHAIN_ID, VAULT_DISPLAY_ORDER } from "@/lib/constants";
+import { getAdjustments } from "@/lib/sim-ledger";
 import { assetsToUsd, getPrice } from "@/lib/format";
 
 export interface TypedPosition {
@@ -92,6 +93,14 @@ export function useDashboardData(): DashboardData {
 
   const [cache] = useState<DashboardCache | null>(readCache);
 
+  // Re-read ledger adjustments whenever a simulated tx fires the custom event
+  const [ledgerTick, setLedgerTick] = useState(0);
+  useEffect(() => {
+    const onUpdate = () => setLedgerTick((t) => t + 1);
+    window.addEventListener("sim-ledger-update", onUpdate);
+    return () => window.removeEventListener("sim-ledger-update", onUpdate);
+  }, []);
+
   const baseVaults = useMemo(() => {
     const filtered = vaults.filter(
       (v: VaultStatsItem) => v.chain.id === DEFAULT_CHAIN_ID,
@@ -119,12 +128,31 @@ export function useDashboardData(): DashboardData {
     }, 0);
   }, [positions, prices]);
 
-  const walletAssets = useMemo<WalletAsset[]>(
-    () => balances?.assets ?? [],
-    [balances],
-  );
+  // Apply simulated balance deltas on top of the real on-chain balance.
+  const walletAssets = useMemo<WalletAsset[]>(() => {
+    const real = balances?.assets ?? [];
+    if (!walletAddress) return real;
+    const adj = getAdjustments(walletAddress);
+    return real.map((a) => {
+      const delta = adj[a.symbol.toUpperCase()] ?? 0;
+      const realBal = parseFloat(a.balance);
+      const realUsd = parseFloat(a.balanceUsd);
+      const adjBal = Math.max(0, realBal + delta);
+      const price = realBal > 0 ? realUsd / realBal : 1;
+      return {
+        symbol: a.symbol,
+        balance: a.symbol === "ETH" ? adjBal.toFixed(6) : adjBal.toFixed(2),
+        balanceUsd: (adjBal * price).toFixed(2),
+      };
+    }).filter((a) => parseFloat(a.balance) > 0);
+  // ledgerTick re-evaluates this memo when a sim tx fires.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balances, walletAddress, ledgerTick]);
 
-  const walletBalanceUsd = parseFloat(balances?.totalBalanceUsd ?? "0") || 0;
+  const walletBalanceUsd = useMemo(
+    () => walletAssets.reduce((s, a) => s + (parseFloat(a.balanceUsd) || 0), 0),
+    [walletAssets],
+  );
 
   const userLoading = positionsLoading || balancesLoading;
 
