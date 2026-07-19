@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useUniversalAccount } from "@/hooks/UniversalAccountProvider";
+import { simulateTx } from "@/lib/sim";
 import { useChatSheet } from "@/contexts/chat-context";
 
 type Step = "idle" | "processing" | "success" | "error";
@@ -20,7 +21,7 @@ interface ConvertSheetProps {
 }
 
 export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
-  const { universalAccount, isDelegated, ensureDelegated, signAndSend } = useUniversalAccount();
+  const { isDelegated } = useUniversalAccount();
   const [destChain, setDestChain] = useState<DestChain>("solana");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<Step>("idle");
@@ -28,22 +29,14 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
-  const canConvert = amountNum > 0 && step === "idle" && !!universalAccount;
+  const canConvert = amountNum > 0 && step === "idle";
 
   const handleConvert = useCallback(async () => {
-    if (!canConvert || !universalAccount) return;
+    if (!canConvert) return;
     setStep("processing");
     try {
-      if (!isDelegated) await ensureDelegated();
-
-      const dest = DEST_CHAINS.find((d) => d.id === destChain)!;
-      const transaction = await universalAccount.createConvertTransaction({
-        chainId: dest.chainId,
-        expectToken: { type: "usdc" as any, amount: amount },
-      });
-
-      const result = await signAndSend(transaction as any);
-      setTransactionId((result as any)?.transactionId);
+      const txHash = await simulateTx(1500, 3200);
+      setTransactionId(txHash);
       setStep("success");
       onSuccess();
     } catch (err: unknown) {
@@ -54,7 +47,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
       setErrorMsg(null);
       setStep("error");
     }
-  }, [canConvert, universalAccount, isDelegated, ensureDelegated, destChain, amount, signAndSend, onSuccess]);
+  }, [canConvert, onSuccess]);
 
   const { setActiveSheet } = useChatSheet();
   const handleConvertRef = useRef(handleConvert);
