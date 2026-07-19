@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useVaults,
   useUserPositions,
-  useUserBalances,
   usePrices,
 } from "@yo-protocol/react";
 import type { VaultStatsItem, UserVaultPosition } from "@yo-protocol/core";
@@ -75,10 +75,19 @@ export function useDashboardData(): DashboardData {
     refetch: refetchPositions,
   } = useUserPositions(walletAddress, { enabled: !!walletAddress });
   const {
-    balances,
+    data: balances,
     isLoading: balancesLoading,
     refetch: refetchBalances,
-  } = useUserBalances(walletAddress, { enabled: !!walletAddress });
+  } = useQuery({
+    queryKey: ["wallet-balance-sepolia", walletAddress],
+    queryFn: async () => {
+      const res = await fetch(`/api/wallet-balance?address=${walletAddress}`);
+      if (!res.ok) return { totalBalanceUsd: "0", assets: [] };
+      return res.json() as Promise<{ totalBalanceUsd: string; assets: { symbol: string; balance: string; balanceUsd: string }[] }>;
+    },
+    enabled: !!walletAddress,
+    refetchInterval: 30_000,
+  });
   const { prices = {} } = usePrices();
 
   const [cache] = useState<DashboardCache | null>(readCache);
@@ -110,47 +119,14 @@ export function useDashboardData(): DashboardData {
     }, 0);
   }, [positions, prices]);
 
-  const walletAssets = useMemo(() => {
-    const raw = (balances as any)?.assets || [];
-    return raw
-      .filter((a: any) => parseFloat(a.balance) > 0)
-      .map((a: any) => ({
-        symbol: a.symbol as string,
-        balance: a.balance as string,
-        balanceUsd: a.balanceUsd as string,
-      }));
-  }, [balances]);
+  const walletAssets = useMemo<WalletAsset[]>(
+    () => balances?.assets ?? [],
+    [balances],
+  );
 
-  // Prefer the API-provided total; fall back to summing visible assets so a
-  // missing/null totalBalanceUsd field never silently shows $0.
-  const walletBalanceUsd = useMemo(() => {
-    const fromApi = parseFloat((balances as any)?.totalBalanceUsd ?? "");
-    if (!isNaN(fromApi) && fromApi > 0) return fromApi;
-    return walletAssets.reduce((sum: number, a: WalletAsset) => sum + (parseFloat(a.balanceUsd) || 0), 0);
-  }, [balances, walletAssets]);
+  const walletBalanceUsd = parseFloat(balances?.totalBalanceUsd ?? "0") || 0;
 
   const userLoading = positionsLoading || balancesLoading;
-
-  // Poll balance every 30 s so newly-funded wallets appear without a page reload.
-  const refetchBalancesRef = useRef(refetchBalances);
-  refetchBalancesRef.current = refetchBalances;
-
-  useEffect(() => {
-    if (!walletAddress) return;
-    const id = setInterval(() => refetchBalancesRef.current(), 30_000);
-    return () => clearInterval(id);
-  }, [walletAddress]);
-
-  // Also refetch when the user returns to the tab.
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && walletAddress) {
-        refetchBalancesRef.current();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [walletAddress]);
 
   // Write to cache when fresh data arrives
   useEffect(() => {
