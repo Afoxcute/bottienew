@@ -38,6 +38,17 @@ function hashOfDay(): number {
   return Math.abs(h);
 }
 
+/* ── Derive a display name from an email address ─────────── */
+
+function nameFromEmail(email: string | undefined): string | null {
+  if (!email) return null;
+  const local = email.split("@")[0];
+  // Take the first word segment (split on . _ + -)
+  const segment = local.split(/[._+\-]/)[0].replace(/\d+$/, "");
+  if (segment.length < 2) return null;
+  return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+}
+
 /* ── Rich greeting with varied emojis ────────────────────── */
 
 const GREETINGS: Record<string, [string, string][]> = {
@@ -310,6 +321,7 @@ export function OverviewScreen({
   const name =
     user?.google?.name?.split(" ")[0] ||
     (user?.apple as { firstName?: string } | undefined)?.firstName ||
+    nameFromEmail(user?.email?.address) ||
     "there";
 
   const bestApy = useMemo(
