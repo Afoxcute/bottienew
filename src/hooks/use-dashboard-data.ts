@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useVaults,
@@ -110,14 +110,10 @@ export function useDashboardData(): DashboardData {
     }, 0);
   }, [positions, prices]);
 
-  const walletBalanceUsd = balances?.totalBalanceUsd
-    ? parseFloat(balances.totalBalanceUsd)
-    : 0;
-
   const walletAssets = useMemo(() => {
     const raw = (balances as any)?.assets || [];
     return raw
-      .filter((a: any) => a.balanceUsd && parseFloat(a.balanceUsd) > 0.01)
+      .filter((a: any) => parseFloat(a.balance) > 0)
       .map((a: any) => ({
         symbol: a.symbol as string,
         balance: a.balance as string,
@@ -125,7 +121,36 @@ export function useDashboardData(): DashboardData {
       }));
   }, [balances]);
 
+  // Prefer the API-provided total; fall back to summing visible assets so a
+  // missing/null totalBalanceUsd field never silently shows $0.
+  const walletBalanceUsd = useMemo(() => {
+    const fromApi = parseFloat((balances as any)?.totalBalanceUsd ?? "");
+    if (!isNaN(fromApi) && fromApi > 0) return fromApi;
+    return walletAssets.reduce((sum: number, a: WalletAsset) => sum + (parseFloat(a.balanceUsd) || 0), 0);
+  }, [balances, walletAssets]);
+
   const userLoading = positionsLoading || balancesLoading;
+
+  // Poll balance every 30 s so newly-funded wallets appear without a page reload.
+  const refetchBalancesRef = useRef(refetchBalances);
+  refetchBalancesRef.current = refetchBalances;
+
+  useEffect(() => {
+    if (!walletAddress) return;
+    const id = setInterval(() => refetchBalancesRef.current(), 30_000);
+    return () => clearInterval(id);
+  }, [walletAddress]);
+
+  // Also refetch when the user returns to the tab.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && walletAddress) {
+        refetchBalancesRef.current();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [walletAddress]);
 
   // Write to cache when fresh data arrives
   useEffect(() => {
