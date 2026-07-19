@@ -104,7 +104,8 @@ function extractRecap(older: UIMessage[]): string {
     if (!text.trim()) continue;
 
     if (msg.role === "user") {
-      facts.push(`- User asked: ${text.slice(0, 500)}`);
+      // Strip newlines so user text cannot inject new system-prompt lines.
+      facts.push(`- User asked: ${text.replace(/[\n\r]/g, " ").slice(0, 500)}`);
     } else {
       facts.push(`- Assistant: ${text.slice(0, 300)}`);
     }

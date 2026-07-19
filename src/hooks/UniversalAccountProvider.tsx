@@ -129,6 +129,9 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     return () => {
       cancelled = true;
       setLoading(false);
+      // Reset the delegation in-flight guard so a new user's ensureDelegated
+      // call never awaits the previous user's delegation transaction.
+      isDelegatingRef.current = null;
     };
   }, [universalAccount, userAddress, refreshDelegationStatus]);
 
@@ -193,13 +196,14 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
           authorizationList: [authorization],
         });
 
-        // Delegation is confirmed on-chain; a status-refresh failure must not
-        // bubble up as a delegation failure — optimistically mark delegated.
         try {
           await refreshDelegationStatus();
         } catch {
-          setIsDelegated(true);
+          // ignore refresh errors
         }
+        // TX was accepted — always mark delegated. refreshDelegationStatus may
+        // transiently return false when the block isn't indexed yet.
+        setIsDelegated(true);
       } finally {
         isDelegatingRef.current = null;
       }

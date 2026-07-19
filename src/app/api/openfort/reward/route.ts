@@ -114,9 +114,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const intent = await res.json();
-
+  // Record cooldown before parsing the body so a malformed-JSON 200 response
+  // never leaves the map entry unwritten (which would allow a double reward).
   rewardCooldowns.set(sessionWalletAddress.toLowerCase(), Date.now());
+
+  const intent = await res.json().catch(() => ({}));
 
   return NextResponse.json({
     success: true,

@@ -45,7 +45,7 @@ export function createTools(walletAddress?: string, userId?: string) {
         "Get the user's wallet balance to see how much they can save",
       inputSchema: z.object({}),
       execute: async () => {
-        if (!walletAddress) return { error: "No wallet connected" };
+        if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) return { error: "No wallet connected" };
         const res = await fetch(
           `${YO_API}/user/balance/${walletAddress}`,
         );
@@ -68,7 +68,7 @@ export function createTools(walletAddress?: string, userId?: string) {
         "Get the user's current savings positions — how much they have saved in each account and what interest they're earning",
       inputSchema: z.object({}),
       execute: async () => {
-        if (!walletAddress) return { error: "No wallet connected" };
+        if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) return { error: "No wallet connected" };
         const [posRes, vaultRes] = await Promise.all([
           fetch(`${YO_API}/user/positions/${walletAddress}`),
           fetch(`${YO_API}/vault/stats`),
@@ -111,8 +111,11 @@ export function createTools(walletAddress?: string, userId?: string) {
           ),
       }),
       execute: async ({ sellToken, buyToken, sellAmount }) => {
-        const sellSym = sellToken.toUpperCase();
-        const buySym = buyToken.toUpperCase();
+        // Case-insensitive lookup preserving original key capitalisation (e.g. 'cbBTC' ≠ 'CBBTC')
+        const normalizeToken = (sym: string) =>
+          Object.keys(BASE_TOKENS).find(k => k.toLowerCase() === sym.toLowerCase()) ?? sym.toUpperCase();
+        const sellSym = normalizeToken(sellToken);
+        const buySym = normalizeToken(buyToken);
         const sellAddr = BASE_TOKENS[sellSym];
         const buyAddr = BASE_TOKENS[buySym];
         if (!sellAddr || !buyAddr) {
@@ -337,8 +340,7 @@ export function createTools(walletAddress?: string, userId?: string) {
           const { fetchWithPayment } = await getX402Agent();
           const res = await fetchWithPayment(`${appUrl}/api/market-data`);
           if (!res.ok) {
-            const text = await res.text();
-            return { error: `Premium analytics returned ${res.status}: ${text}` };
+            return { error: "Premium analytics temporarily unavailable" };
           }
           return await res.json();
         } catch (err: any) {
@@ -367,6 +369,12 @@ export function createTools(walletAddress?: string, userId?: string) {
 
         if (!/^0x[0-9a-fA-F]{40}$/.test(recipientAddress)) {
           return { error: "Invalid wallet address" };
+        }
+
+        // Enforce that the reward goes to the authenticated user's own wallet only.
+        // walletAddress in the createTools closure is the session user's EOA.
+        if (walletAddress && recipientAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+          return { error: "Reward can only be sent to your own wallet" };
         }
 
         const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;

@@ -22,10 +22,18 @@ const COINGECKO =
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handler = async (_: NextRequest): Promise<NextResponse<any>> => {
-  const [vaultRes, priceRes] = await Promise.all([
-    fetch(`${YO_API}/vault/stats`, { signal: AbortSignal.timeout(5000) }),
-    fetch(COINGECKO, { signal: AbortSignal.timeout(5000) }),
-  ]);
+  let vaultRes: Response, priceRes: Response;
+  try {
+    [vaultRes, priceRes] = await Promise.all([
+      fetch(`${YO_API}/vault/stats`, { signal: AbortSignal.timeout(5000) }),
+      fetch(COINGECKO, { signal: AbortSignal.timeout(5000) }),
+    ]);
+  } catch {
+    return NextResponse.json(
+      { error: "Market data temporarily unavailable" },
+      { status: 504 },
+    );
+  }
 
   if (!vaultRes.ok) {
     return NextResponse.json(
@@ -69,7 +77,6 @@ const handler = async (_: NextRequest): Promise<NextResponse<any>> => {
 
   const body = NextResponse.json({
     generatedAt: new Date().toISOString(),
-    poweredBy: "Bottie Premium Analytics · paid via x402 · signed by Openfort",
     vaultInsights,
     topPick: vaultInsights[0]?.id ?? null,
     prices: {
