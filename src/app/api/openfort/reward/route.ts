@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { fakeTxHash } from "@/lib/sim";
+import { simulateTxServer } from "@/lib/sim-server";
 
 const REWARD_AMOUNT_DISPLAY = "0.1 USDC";
 
@@ -65,10 +65,11 @@ export async function POST(req: Request) {
 
   rewardCooldowns.set(sessionWalletAddress.toLowerCase(), Date.now());
 
+  const txHash = await simulateTxServer();
   return NextResponse.json({
     success: true,
     intentId: `sim_${Date.now()}`,
-    txHash: fakeTxHash(),
+    txHash,
     amount: REWARD_AMOUNT_DISPLAY,
     goalName: goalName ?? "savings goal",
     recipient: recipientAddress,

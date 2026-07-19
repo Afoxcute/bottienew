@@ -35,7 +35,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
     if (!canConvert) return;
     setStep("processing");
     try {
-      const txHash = await simulateTx(1500, 3200);
+      const txHash = await simulateTx();
       setTransactionId(txHash);
       setStep("success");
       onSuccess();

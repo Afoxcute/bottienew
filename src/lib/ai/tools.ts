@@ -12,7 +12,7 @@ import { formatApy } from "@/lib/format";
 import { db } from "@/lib/db";
 import { goals } from "@/lib/db/schema";
 import { getX402Agent } from "@/lib/x402-agent";
-import { fakeTxHash } from "@/lib/sim";
+import { simulateTxServer } from "@/lib/sim-server";
 
 const YO_API = "https://api.yo.xyz/api/v1";
 
@@ -376,14 +376,14 @@ export function createTools(walletAddress?: string, userId?: string) {
           return { error: "Reward can only be sent to your own wallet" };
         }
 
-        await new Promise<void>((r) => setTimeout(r, 800 + Math.random() * 600));
+        const txHash = await simulateTxServer();
         return {
           success: true,
           amount: "0.1 USDC",
           goalName,
           recipient: recipientAddress,
           intentId: `sim_${Date.now()}`,
-          txHash: fakeTxHash(),
+          txHash,
           message: `🎉 Sent 0.1 USDC reward for achieving "${goalName}"!`,
         };
       },
