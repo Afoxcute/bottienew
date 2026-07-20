@@ -1,10 +1,10 @@
 /**
  * Goal achievement reward endpoint.
  *
- * When the AI advisor detects a user has hit a savings goal, it calls this
- * route to send a 0.1 USDC bonus directly to the user's wallet.
- * The transfer is executed by Bottie's Openfort backend wallet via
- * the transaction intents API — no user signature required.
+ * Sends 0.1 USDC to the authenticated user's wallet when they hit a savings
+ * goal. The transfer is executed server-side by Bottie's Openfort backend
+ * wallet via the transaction intents API. Enforces a 24-hour per-wallet
+ * cooldown and verifies the recipient matches the session wallet.
  */
 import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
