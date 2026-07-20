@@ -3,12 +3,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
+import { parseUnits, parseEther, encodeFunctionData, erc20Abi } from "viem";
 import type { Address, Hex } from "viem";
-import { useAuth } from "@/hooks/use-auth";
-import { simulateTx } from "@/lib/sim";
-import { recordDelta } from "@/lib/sim-ledger";
+import { useAuth, useSmartWallets } from "@/hooks/use-auth";
 import { useChatSheet } from "@/contexts/chat-context";
 
+const USDC_BASE: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 type Step = "idle" | "processing" | "success" | "error";
 type Token = "ETH" | "USDC";
@@ -22,6 +22,7 @@ interface SendSheetProps {
 
 export function SendSheet({ walletAssets, onClose, onSuccess }: SendSheetProps) {
   const { user } = useAuth();
+  const { client } = useSmartWallets();
   const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as Address | undefined;
 
   const [recipient, setRecipient] = useState("");
@@ -37,21 +38,40 @@ export function SendSheet({ walletAssets, onClose, onSuccess }: SendSheetProps) 
   const isValidAddress = /^0x[a-fA-F0-9]{40}$/.test(recipient);
   const amountNum = parseFloat(amount) || 0;
   const exceedsBalance = amountNum > parseFloat(selectedBalance);
-  const canSend = isValidAddress && amountNum > 0 && !exceedsBalance && step === "idle";
+  const canSend = isValidAddress && amountNum > 0 && !exceedsBalance && step === "idle" && !!client;
 
   const handleSend = useCallback(async () => {
-    if (!canSend || !walletAddress) return;
+    if (!canSend || !client || !walletAddress) return;
     setStep("processing");
     try {
-      const txHash = await simulateTx();
+      let txHash: Hex;
+      if (token === "ETH") {
+        txHash = await client.sendTransaction({
+          calls: [{
+            to: recipient as Address,
+            value: parseEther(amount),
+          }],
+        });
+      } else {
+        const data = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [recipient as Address, parseUnits(amount, 6)],
+        });
+        txHash = await client.sendTransaction({
+          calls: [{
+            to: USDC_BASE,
+            data,
+          }],
+        });
+      }
       setHash(txHash);
-      if (walletAddress) recordDelta(walletAddress, token, -amountNum);
       setStep("success");
       onSuccess();
     } catch {
       setStep("error");
     }
-  }, [canSend, walletAddress, onSuccess]);
+  }, [canSend, client, walletAddress, token, recipient, amount, onSuccess]);
 
   // Sync to chat bar
   const { setActiveSheet } = useChatSheet();

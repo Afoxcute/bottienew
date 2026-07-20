@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { parseUnits } from "viem";
+import { parseUnits, encodeFunctionData, erc20Abi } from "viem";
 import type { Address, Hex } from "viem";
+import { useSmartWallets, useAuth } from "@/hooks/use-auth";
+import { useYoClient } from "@yo-protocol/react";
 import type { DashboardData } from "@/hooks/use-dashboard-data";
-import { VAULT_FRIENDLY_NAMES } from "@/lib/constants";
-import { simulateTx } from "@/lib/sim";
+import {
+  VAULT_FRIENDLY_NAMES,
+  BASE_TOKENS,
+  BASE_TOKEN_DECIMALS,
+  ALLOWANCE_HOLDER,
+} from "@/lib/constants";
 import { formatApy } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
-import { recordDelta } from "@/lib/sim-ledger";
-import { useAuth } from "@/hooks/use-auth";
 import { useVaultDeposit, useVaultRedeem } from "@/hooks/use-vault-tx";
 import { useChatSheet } from "@/contexts/chat-context";
 
@@ -127,6 +131,12 @@ function SwapDepositPending({
   const vault = dashboardData?.baseVaults.find((v) => v.id === vaultId);
   const apy = formatApy(vault?.yield?.["7d"]);
 
+  const { client } = useSmartWallets();
+  const { user } = useAuth();
+  const yoClient = useYoClient();
+  const walletAddress = (user?.smartWallet?.address ??
+    user?.wallet?.address) as Address | undefined;
+
   const { setActiveSheet } = useChatSheet();
   const [executing, setExecuting] = useState(false);
 
@@ -139,31 +149,121 @@ function SwapDepositPending({
     [addToolResult, toolCallId, toolKey],
   );
 
-  const { user } = useAuth();
-  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
-
   const handleConfirm = useCallback(async () => {
+    if (!client || !walletAddress) {
+      sendResult({ success: false, error: "Wallet not ready" });
+      return;
+    }
+    if (!isSwapOnly && (!yoClient || !vault)) {
+      sendResult({ success: false, error: "Vault not ready" });
+      return;
+    }
     setExecuting(true);
     try {
-      const txHash = await simulateTx();
-      sendResult({ success: true, txHash });
-      const tokenSym = (sellToken || "").toUpperCase();
-      logActivity({
-        type: isSwapOnly ? "swap" : "swap_and_deposit",
-        amount: sellAmount,
-        tokenSymbol: tokenSym,
-        ...(vaultId ? { vaultId } : {}),
-        txHash,
+      const sellSym = (sellToken || "").toUpperCase();
+      const buySym = (buyToken || "").toUpperCase();
+      const sellAddr = BASE_TOKENS[sellSym] as Address;
+      const buyAddr = BASE_TOKENS[buySym] as Address;
+      const sellDecimals = BASE_TOKEN_DECIMALS[sellSym];
+      const isNativeETH = sellSym === "ETH";
+      const sellAmountWei = parseUnits(sellAmount, sellDecimals).toString();
+
+      // 1. Fetch fresh 0x quote via our API route
+      const params = new URLSearchParams({
+        sellToken: sellAddr,
+        buyToken: buyAddr,
+        sellAmount: sellAmountWei,
+        taker: walletAddress,
       });
-      if (walletAddress) recordDelta(walletAddress, tokenSym, -parseFloat(sellAmount) || 0);
+      const quoteRes = await fetch(`/api/swap-quote?${params}`);
+      const quote = await quoteRes.json();
+      if (!quoteRes.ok || quote.code) {
+        sendResult({
+          success: false,
+          error: quote.reason || quote.message || "Swap quote failed",
+        });
+        setExecuting(false);
+        return;
+      }
+
+      // 2. Build swap calls: approve (skip for native ETH) + swap
+      const swapCalls: { to: Address; data: Hex; value?: bigint }[] = [];
+      if (!isNativeETH) {
+        swapCalls.push({
+          to: sellAddr,
+          data: encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [
+              (quote.issues?.allowance?.spender ||
+                ALLOWANCE_HOLDER) as Address,
+              BigInt(sellAmountWei),
+            ],
+          }),
+        });
+      }
+      swapCalls.push({
+        to: quote.transaction.to as Address,
+        data: quote.transaction.data as Hex,
+        value: quote.transaction.value
+          ? BigInt(quote.transaction.value)
+          : undefined,
+      });
+
+      if (isSwapOnly) {
+        // 3a. Standalone swap — just execute the swap
+        const txHash = await client.sendTransaction({
+          calls: swapCalls,
+        });
+        sendResult({ success: true, txHash });
+        logActivity({ type: "swap", amount: sellAmount, tokenSymbol: sellSym, txHash });
+      } else {
+        // 3b. Swap + deposit — add deposit calls via yoGateway SDK
+        const vaultAddress = vault!.contracts.vaultAddress as Address;
+        const depositAmount = BigInt(quote.minBuyAmount);
+        const depositTxs = await yoClient!.prepareDepositWithApproval({
+          vault: vaultAddress,
+          token: buyAddr,
+          owner: walletAddress,
+          recipient: walletAddress,
+          amount: depositAmount,
+          slippageBps: 50,
+        });
+
+        const depositCalls = depositTxs.map((tx) => ({
+          to: tx.to as Address,
+          data: tx.data as Hex,
+          value: tx.value ? BigInt(tx.value) : undefined,
+        }));
+
+        const txHash = await client.sendTransaction({
+          calls: [...swapCalls, ...depositCalls],
+        });
+        sendResult({ success: true, txHash });
+        logActivity({ type: "swap_and_deposit", amount: sellAmount, tokenSymbol: sellSym, vaultId, txHash });
+      }
+
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     } catch (err: any) {
-      sendResult({ success: false, error: err?.message || "Transaction failed" });
+      sendResult({
+        success: false,
+        error: err?.message || "Transaction failed",
+      });
     } finally {
       setExecuting(false);
     }
-  }, [sellToken, sellAmount, vaultId, isSwapOnly, sendResult, dashboardData, walletAddress]);
+  }, [
+    client,
+    walletAddress,
+    yoClient,
+    vault,
+    sellToken,
+    buyToken,
+    sellAmount,
+    sendResult,
+    dashboardData,
+  ]);
 
   const handleCancel = useCallback(() => {
     sendResult({ success: false, error: "User cancelled" });
@@ -232,8 +332,6 @@ function PendingApproval({
   dashboardData: DashboardData | null;
 }) {
   const vaultAddress = vault?.contracts?.vaultAddress as Address | undefined;
-  const { user } = useAuth();
-  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
 
   const sendResult = (output: unknown) =>
     addToolResult({ tool: toolName, toolCallId, output });
@@ -243,7 +341,6 @@ function PendingApproval({
     onConfirmed: (hash) => {
       sendResult({ success: true, txHash: hash });
       logActivity({ type: "deposit", amount, tokenSymbol, vaultId, txHash: hash });
-      if (walletAddress) recordDelta(walletAddress, tokenSymbol, -parseFloat(amount));
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     },
@@ -260,7 +357,6 @@ function PendingApproval({
     onConfirmed: (hash) => {
       sendResult({ success: true, txHash: hash });
       logActivity({ type: "withdraw", amount, tokenSymbol, vaultId, txHash: hash });
-      if (walletAddress) recordDelta(walletAddress, tokenSymbol, +parseFloat(amount));
       dashboardData?.refetchPositions();
       dashboardData?.refetchBalances();
     },

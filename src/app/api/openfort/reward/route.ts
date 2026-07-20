@@ -8,14 +8,25 @@
  */
 import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { simulateTxServer } from "@/lib/sim-server";
+import { DEFAULT_CHAIN_ID, BASE_TOKENS } from "@/lib/constants";
+import { OPENFORT_API } from "@/lib/openfort";
 
+// 0.1 USDC in atomic units (6 decimals)
+const REWARD_AMOUNT_ATOMIC = "100000";
 const REWARD_AMOUNT_DISPLAY = "0.1 USDC";
 
 // Per-process 24-hour cooldown per wallet. Resets on serverless cold start,
 // which is acceptable — the authorization check below is the primary guard.
 const rewardCooldowns = new Map<string, number>();
 const REWARD_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/** Encode ERC-20 transfer(address,uint256) calldata without viem to keep this route lightweight. */
+function encodeTransfer(to: string, amountHex: string): string {
+  const selector = "a9059cbb"; // keccak256("transfer(address,uint256)") first 4 bytes
+  const paddedTo = to.replace(/^0x/i, "").padStart(64, "0");
+  const paddedAmount = BigInt(amountHex).toString(16).padStart(64, "0");
+  return `0x${selector}${paddedTo}${paddedAmount}`;
+}
 
 export async function POST(req: Request) {
   let sessionWalletAddress: string;
@@ -63,13 +74,56 @@ export async function POST(req: Request) {
     );
   }
 
+  const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;
+  const secretKey = process.env.OPENFORT_SECRET_KEY;
+
+  if (!backendWalletId || !secretKey) {
+    // Gracefully degrade — reward is a bonus feature, not critical path
+    return NextResponse.json(
+      { error: "Openfort backend wallet not configured" },
+      { status: 503 },
+    );
+  }
+
+  const calldata = encodeTransfer(recipientAddress, REWARD_AMOUNT_ATOMIC);
+
+  const res = await fetch(`${OPENFORT_API}/v1/transaction_intents`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${secretKey}`,
+    },
+    body: JSON.stringify({
+      chainId: DEFAULT_CHAIN_ID,
+      account: backendWalletId,
+      interactions: [
+        {
+          to: BASE_TOKENS.USDC,
+          data: calldata,
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("[Openfort reward] Transaction intent failed:", text);
+    return NextResponse.json(
+      { error: "Failed to create transaction intent" },
+      { status: 502 },
+    );
+  }
+
+  // Record cooldown before parsing the body so a malformed-JSON 200 response
+  // never leaves the map entry unwritten (which would allow a double reward).
   rewardCooldowns.set(sessionWalletAddress.toLowerCase(), Date.now());
 
-  const txHash = await simulateTxServer();
+  const intent = await res.json().catch(() => ({}));
+
   return NextResponse.json({
     success: true,
-    intentId: `sim_${Date.now()}`,
-    txHash,
+    intentId: intent.id,
+    txHash: intent.response?.transactionHash ?? null,
     amount: REWARD_AMOUNT_DISPLAY,
     goalName: goalName ?? "savings goal",
     recipient: recipientAddress,

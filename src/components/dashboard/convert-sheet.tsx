@@ -4,9 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useUniversalAccount } from "@/hooks/UniversalAccountProvider";
-import { useAuth } from "@/hooks/use-auth";
-import { simulateTx } from "@/lib/sim";
-import { recordDelta } from "@/lib/sim-ledger";
 import { useChatSheet } from "@/contexts/chat-context";
 
 type Step = "idle" | "processing" | "success" | "error";
@@ -23,9 +20,7 @@ interface ConvertSheetProps {
 }
 
 export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
-  const { isDelegated } = useUniversalAccount();
-  const { user } = useAuth();
-  const walletAddress = (user?.smartWallet?.address ?? user?.wallet?.address) as string | undefined;
+  const { universalAccount, isDelegated, ensureDelegated, signAndSend } = useUniversalAccount();
   const [destChain, setDestChain] = useState<DestChain>("solana");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<Step>("idle");
@@ -33,15 +28,22 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const amountNum = parseFloat(amount) || 0;
-  const canConvert = amountNum > 0 && step === "idle";
+  const canConvert = amountNum > 0 && step === "idle" && !!universalAccount;
 
   const handleConvert = useCallback(async () => {
-    if (!canConvert) return;
+    if (!canConvert || !universalAccount) return;
     setStep("processing");
     try {
-      const txHash = await simulateTx();
-      setTransactionId(txHash);
-      if (walletAddress) recordDelta(walletAddress, "USDC", -amountNum);
+      if (!isDelegated) await ensureDelegated();
+
+      const dest = DEST_CHAINS.find((d) => d.id === destChain)!;
+      const transaction = await universalAccount.createConvertTransaction({
+        chainId: dest.chainId,
+        expectToken: { type: "usdc" as any, amount: amount },
+      });
+
+      const result = await signAndSend(transaction as any);
+      setTransactionId((result as any)?.transactionId);
       setStep("success");
       onSuccess();
     } catch (err: unknown) {
@@ -52,7 +54,7 @@ export function ConvertSheet({ onClose, onSuccess }: ConvertSheetProps) {
       setErrorMsg(null);
       setStep("error");
     }
-  }, [canConvert, onSuccess]);
+  }, [canConvert, universalAccount, isDelegated, ensureDelegated, destChain, amount, signAndSend, onSuccess]);
 
   const { setActiveSheet } = useChatSheet();
   const handleConvertRef = useRef(handleConvert);

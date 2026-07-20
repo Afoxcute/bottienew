@@ -7,12 +7,13 @@ import {
   DEFAULT_CHAIN_ID,
   BASE_TOKENS,
   BASE_TOKEN_DECIMALS,
+  ALLOWANCE_HOLDER,
 } from "@/lib/constants";
 import { formatApy } from "@/lib/format";
 import { db } from "@/lib/db";
 import { goals } from "@/lib/db/schema";
 import { getX402Agent } from "@/lib/x402-agent";
-import { simulateTxServer } from "@/lib/sim-server";
+import { OPENFORT_API } from "@/lib/openfort";
 
 const YO_API = "https://api.yo.xyz/api/v1";
 
@@ -376,16 +377,50 @@ export function createTools(walletAddress?: string, userId?: string) {
           return { error: "Reward can only be sent to your own wallet" };
         }
 
-        const txHash = await simulateTxServer();
-        return {
-          success: true,
-          amount: "0.1 USDC",
-          goalName,
-          recipient: recipientAddress,
-          intentId: `sim_${Date.now()}`,
-          txHash,
-          message: `🎉 Sent 0.1 USDC reward for achieving "${goalName}"!`,
-        };
+        const backendWalletId = process.env.OPENFORT_BACKEND_WALLET_ID;
+        const secretKey = process.env.OPENFORT_SECRET_KEY;
+
+        if (!backendWalletId || !secretKey) {
+          return { error: "AI treasury not configured — reward unavailable" };
+        }
+
+        // ERC-20 transfer(address,uint256) calldata
+        const selector = "a9059cbb";
+        const paddedTo = recipientAddress.replace(/^0x/i, "").padStart(64, "0");
+        const paddedAmount = BigInt("100000").toString(16).padStart(64, "0"); // 0.1 USDC (6 decimals)
+        const calldata = `0x${selector}${paddedTo}${paddedAmount}`;
+
+        try {
+          const res = await fetch(`${OPENFORT_API}/v1/transaction_intents`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${secretKey}`,
+            },
+            body: JSON.stringify({
+              chainId: DEFAULT_CHAIN_ID,
+              account: backendWalletId,
+              interactions: [{ to: BASE_TOKENS.USDC, data: calldata }],
+            }),
+          });
+
+          if (!res.ok) {
+            return { error: "Reward could not be sent — please try again later" };
+          }
+
+          const intent = await res.json();
+          return {
+            success: true,
+            amount: "0.1 USDC",
+            goalName,
+            recipient: recipientAddress,
+            intentId: intent.id,
+            txHash: intent.response?.transactionHash ?? null,
+            message: `🎉 Sent 0.1 USDC reward for achieving "${goalName}"!`,
+          };
+        } catch (err: any) {
+          return { error: err?.message || "Failed to send reward" };
+        }
       },
     }),
   };

@@ -2,13 +2,13 @@
 
 import { useState, useCallback } from "react";
 import type { Address, Hex } from "viem";
-import { useAuth } from "@/hooks/use-auth";
-import { simulateTx } from "@/lib/sim";
+import { useSmartWallets, useAuth } from "@/hooks/use-auth";
+import { useYoClient } from "@yo-protocol/react";
 
 type Step = "idle" | "processing" | "success" | "error";
 
 export function useVaultDeposit({
-  vault: _vault,
+  vault,
   onConfirmed,
   onError,
 }: {
@@ -16,18 +16,42 @@ export function useVaultDeposit({
   onConfirmed?: (hash: Hex) => void;
   onError?: (err: Error) => void;
 }) {
+  const { client } = useSmartWallets();
   const { user } = useAuth();
-  const walletAddress = (user?.smartWallet?.address ??
-    user?.wallet?.address) as Address | undefined;
+  const yoClient = useYoClient();
   const [step, setStep] = useState<Step>("idle");
   const [hash, setHash] = useState<Hex | undefined>();
 
+  const walletAddress = (user?.smartWallet?.address ??
+    user?.wallet?.address) as Address | undefined;
+
   const deposit = useCallback(
-    async (_: { token: Address; amount: bigint; chainId?: number }) => {
-      if (!walletAddress) return;
+    async ({
+      token,
+      amount,
+    }: {
+      token: Address;
+      amount: bigint;
+      chainId?: number;
+    }) => {
+      if (!client || !walletAddress || !yoClient) return;
       setStep("processing");
       try {
-        const txHash = await simulateTx();
+        const txs = await yoClient.prepareDepositWithApproval({
+          vault,
+          token,
+          owner: walletAddress,
+          recipient: walletAddress,
+          amount,
+          slippageBps: 50,
+        });
+        const txHash = await client.sendTransaction({
+          calls: txs.map((tx) => ({
+            to: tx.to as Address,
+            data: tx.data as Hex,
+            value: tx.value ? BigInt(tx.value) : undefined,
+          })),
+        });
         setHash(txHash);
         setStep("success");
         onConfirmed?.(txHash);
@@ -40,7 +64,7 @@ export function useVaultDeposit({
         );
       }
     },
-    [walletAddress, onConfirmed, onError],
+    [client, walletAddress, vault, yoClient, onConfirmed, onError],
   );
 
   const reset = useCallback(() => {
@@ -59,7 +83,7 @@ export function useVaultDeposit({
 }
 
 export function useVaultRedeem({
-  vault: _vault,
+  vault,
   onConfirmed,
   onError,
 }: {
@@ -67,18 +91,33 @@ export function useVaultRedeem({
   onConfirmed?: (hash: Hex) => void;
   onError?: (err: Error) => void;
 }) {
+  const { client } = useSmartWallets();
   const { user } = useAuth();
-  const walletAddress = (user?.smartWallet?.address ??
-    user?.wallet?.address) as Address | undefined;
+  const yoClient = useYoClient();
   const [step, setStep] = useState<Step>("idle");
   const [hash, setHash] = useState<Hex | undefined>();
 
+  const walletAddress = (user?.smartWallet?.address ??
+    user?.wallet?.address) as Address | undefined;
+
   const redeem = useCallback(
-    async (_shares: bigint) => {
-      if (!walletAddress) return;
+    async (shares: bigint) => {
+      if (!client || !walletAddress || !yoClient) return;
       setStep("processing");
       try {
-        const txHash = await simulateTx();
+        const txs = await yoClient.prepareRedeemWithApproval({
+          vault,
+          shares,
+          owner: walletAddress,
+          recipient: walletAddress,
+        });
+        const txHash = await client.sendTransaction({
+          calls: txs.map((tx) => ({
+            to: tx.to as Address,
+            data: tx.data as Hex,
+            value: tx.value ? BigInt(tx.value) : undefined,
+          })),
+        });
         setHash(txHash);
         setStep("success");
         onConfirmed?.(txHash);
@@ -91,7 +130,7 @@ export function useVaultRedeem({
         );
       }
     },
-    [walletAddress, onConfirmed, onError],
+    [client, walletAddress, vault, yoClient, onConfirmed, onError],
   );
 
   const reset = useCallback(() => {

@@ -1,17 +1,16 @@
 "use client";
 
-import { useMemo, useEffect, useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useVaults,
   useUserPositions,
+  useUserBalances,
   usePrices,
 } from "@yo-protocol/react";
 import type { VaultStatsItem, UserVaultPosition } from "@yo-protocol/core";
 import type { Address } from "viem";
 import { DEFAULT_CHAIN_ID, VAULT_DISPLAY_ORDER } from "@/lib/constants";
-import { getAdjustments } from "@/lib/sim-ledger";
 import { assetsToUsd, getPrice } from "@/lib/format";
 
 export interface TypedPosition {
@@ -76,30 +75,13 @@ export function useDashboardData(): DashboardData {
     refetch: refetchPositions,
   } = useUserPositions(walletAddress, { enabled: !!walletAddress });
   const {
-    data: balances,
+    balances,
     isLoading: balancesLoading,
     refetch: refetchBalances,
-  } = useQuery({
-    queryKey: ["wallet-balance-sepolia", walletAddress],
-    queryFn: async () => {
-      const res = await fetch(`/api/wallet-balance?address=${walletAddress}`);
-      if (!res.ok) return { totalBalanceUsd: "0", assets: [] };
-      return res.json() as Promise<{ totalBalanceUsd: string; assets: { symbol: string; balance: string; balanceUsd: string }[] }>;
-    },
-    enabled: !!walletAddress,
-    refetchInterval: 30_000,
-  });
+  } = useUserBalances(walletAddress, { enabled: !!walletAddress });
   const { prices = {} } = usePrices();
 
   const [cache] = useState<DashboardCache | null>(readCache);
-
-  // Re-read ledger adjustments whenever a simulated tx fires the custom event
-  const [ledgerTick, setLedgerTick] = useState(0);
-  useEffect(() => {
-    const onUpdate = () => setLedgerTick((t) => t + 1);
-    window.addEventListener("sim-ledger-update", onUpdate);
-    return () => window.removeEventListener("sim-ledger-update", onUpdate);
-  }, []);
 
   const baseVaults = useMemo(() => {
     const filtered = vaults.filter(
@@ -128,31 +110,20 @@ export function useDashboardData(): DashboardData {
     }, 0);
   }, [positions, prices]);
 
-  // Apply simulated balance deltas on top of the real on-chain balance.
-  const walletAssets = useMemo<WalletAsset[]>(() => {
-    const real = balances?.assets ?? [];
-    if (!walletAddress) return real;
-    const adj = getAdjustments(walletAddress);
-    return real.map((a) => {
-      const delta = adj[a.symbol.toUpperCase()] ?? 0;
-      const realBal = parseFloat(a.balance);
-      const realUsd = parseFloat(a.balanceUsd);
-      const adjBal = Math.max(0, realBal + delta);
-      const price = realBal > 0 ? realUsd / realBal : 1;
-      return {
-        symbol: a.symbol,
-        balance: a.symbol === "ETH" ? adjBal.toFixed(6) : adjBal.toFixed(2),
-        balanceUsd: (adjBal * price).toFixed(2),
-      };
-    }).filter((a) => parseFloat(a.balance) > 0);
-  // ledgerTick re-evaluates this memo when a sim tx fires.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balances, walletAddress, ledgerTick]);
+  const walletBalanceUsd = balances?.totalBalanceUsd
+    ? parseFloat(balances.totalBalanceUsd)
+    : 0;
 
-  const walletBalanceUsd = useMemo(
-    () => walletAssets.reduce((s, a) => s + (parseFloat(a.balanceUsd) || 0), 0),
-    [walletAssets],
-  );
+  const walletAssets = useMemo(() => {
+    const raw = (balances as any)?.assets || [];
+    return raw
+      .filter((a: any) => a.balanceUsd && parseFloat(a.balanceUsd) > 0.01)
+      .map((a: any) => ({
+        symbol: a.symbol as string,
+        balance: a.balance as string,
+        balanceUsd: a.balanceUsd as string,
+      }));
+  }, [balances]);
 
   const userLoading = positionsLoading || balancesLoading;
 
