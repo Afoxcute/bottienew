@@ -72,7 +72,7 @@ export function Footer() {
         className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-1.5"
       >
         <span className="font-mono text-[11px] tracking-[0.1em] text-ink-light/40">
-          built by s0nderlabs
+          built by Afoxcute
         </span>
       </motion.div>
     </footer>
