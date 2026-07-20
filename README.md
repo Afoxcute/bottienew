@@ -4,7 +4,9 @@
 
 Bottie is a mobile savings app that lets anyone earn yield on their money without understanding crypto. Powered by [YO Protocol](https://docs.yo.xyz), it replaces the complexity of DeFi with a single AI chat interface. Just tell Bottie what you're saving for, and it handles everything.
 
-**[Live App](https://yoyo.s0nderlabs.xyz)** · **[Demo Video](https://www.youtube.com/watch?v=lt3f9EXybj8&t=3s)**
+**[Live App](https://bottie-app.vercel.app/)** · **[Demo Video](https://youtu.be/4danQ8SsfHE)**
+
+Built for the [UXMaxx Hackathon](https://www.encodeclub.com/my-programmes/uxmaxx-hackathon) by Encode Club.
 
 ---
 
@@ -22,7 +24,7 @@ Bottie is a mobile savings app that lets anyone earn yield on their money withou
 
 - **AI savings advisor** — Conversational chat with voice input. The AI can check rates, deposit, withdraw, set goals, and narrate your activity in plain English.
 - **Gasless transactions** — All on-chain transactions are gas-sponsored via ZeroDev paymaster. Users never need ETH for gas.
-- **EIP-7702 delegation** — Magic EOA is delegated to Particle's Universal Account contract via a Type-4 transaction (one-time, per chain). Enables cross-chain operations from the same address with no new deployment.
+- **EIP-7702 delegation** — Magic EOA is delegated to Particle's Universal Account contract via a Type-4 transaction (one-time, per chain). Enables cross-chain operations from the same address.
 - **Cross-chain conversion** — Particle Universal Account SDK orchestrates multi-chain asset conversion. Supports Base → Solana, Base → Ethereum, and more.
 - **Savings goals** — Set targets like "Japan trip: $5,000" and track progress visually on each position card.
 - **Cross-asset deposits** — Deposit USDC into any vault (yoBTC, yoEUR, etc). The YO SDK handles token swaps automatically.
@@ -31,10 +33,11 @@ Bottie is a mobile savings app that lets anyone earn yield on their money withou
 - **Activity narration** — AI summarizes your recent transactions in 2–3 sentences.
 - **Real mainnet transactions** — All deposits and withdrawals happen on Base mainnet. No testnet, no mocks.
 - **PWA support** — Installable as a home screen app with offline fallback.
+- **Goal achievement rewards** — AI awards 0.1 USDC to users who hit a savings goal, sent automatically by Bottie's Openfort backend wallet.
 
 ## Auth & wallet architecture
 
-The previous Privy implementation has been replaced with a three-layer wallet stack:
+Three-layer wallet stack:
 
 ```
 Magic SDK (email OTP)
@@ -55,7 +58,7 @@ Magic DID tokens expire in 15 seconds and cannot be used as session cookies. Aft
 2. Mints a signed HS256 JWT (30-day TTL) using `jose`
 3. Sets it as an `httpOnly` session cookie
 
-All subsequent API calls read `SESSION_JWT_SECRET`-verified session cookies — no Privy server SDK needed.
+All subsequent API calls verify the session cookie using `SESSION_JWT_SECRET`.
 
 ### Provider hierarchy
 
@@ -64,21 +67,19 @@ MagicProvider
   └── ZeroDevProvider
         └── UniversalAccountProvider
               └── QueryClientProvider
-                    └── WagmiProvider   ← plain wagmi (NOT @privy-io/wagmi)
+                    └── WagmiProvider
                           └── YieldProvider
 ```
 
-### `useAuth()` adapter
+### `useAuth()` hook
 
-`src/hooks/use-auth.ts` exposes a drop-in `useAuth()` that mirrors Privy's `usePrivy()` shape exactly:
+`src/hooks/use-auth.ts` exposes a unified `useAuth()` hook that normalises the Magic + ZeroDev session into a single user object:
 
 ```ts
 user.wallet.address         // Magic EOA address
 user.smartWallet.address    // ZeroDev kernel contract address
 user.email.address          // Email used at login
 ```
-
-This allowed all 16+ consuming files to swap `usePrivy` → `useAuth` with import-only changes and no logic rewrites.
 
 ## YO Protocol integration
 
@@ -111,7 +112,7 @@ All transactions are executed through ZeroDev's `kernelClient.sendTransaction()`
 
 ## AI chat
 
-The AI assistant uses DeepSeek Chat (`deepseek-chat`) via the Vercel AI SDK with 10 tools:
+The AI assistant uses DeepSeek Chat (`deepseek-chat`) via the Vercel AI SDK with 12 tools:
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -121,6 +122,8 @@ The AI assistant uses DeepSeek Chat (`deepseek-chat`) via the Vercel AI SDK with
 | `get_swap_quote` | Server | Token swap quotes via 0x API |
 | `create_goal` | Server | Set a savings goal |
 | `get_goals` | Server | Retrieve savings goals |
+| `get_premium_insights` | Server | Premium yield analytics via x402 micro-payment |
+| `award_goal_reward` | Server | Sends 0.1 USDC to user via Openfort when goal achieved |
 | `deposit` | Client | Save into a vault (requires user confirmation) |
 | `withdraw` | Client | Withdraw from a vault (requires user confirmation) |
 | `swap` | Client | Swap tokens (requires user confirmation) |
@@ -146,6 +149,8 @@ Voice input is powered by Groq Whisper (`whisper-large-v3-turbo`).
 | Database | Neon Postgres, Drizzle ORM |
 | On-ramp | MoonPay |
 | Swaps | 0x API |
+| Backend wallet | Openfort (TEE-secured signing) |
+| Agentic payments | x402 protocol |
 | Hosting | Vercel |
 
 ## Project structure
@@ -165,6 +170,8 @@ src/
 │   │   ├── activity/narrate/route.ts   # AI activity narration
 │   │   ├── goals/route.ts              # Savings goals CRUD
 │   │   ├── swap-quote/route.ts         # 0x swap quote proxy
+│   │   ├── market-data/route.ts        # Premium analytics (x402 paywall)
+│   │   ├── openfort/reward/route.ts    # Goal reward USDC transfer via Openfort
 │   │   └── voice/transcribe/route.ts   # Groq Whisper transcription
 │   └── app/
 │       ├── layout.tsx                  # Auth guard + chat bar
@@ -183,14 +190,18 @@ src/
 │   ├── MagicProvider.tsx               # Magic SDK context (email OTP, EIP-7702)
 │   ├── ZeroDevProvider.tsx             # ZeroDev kernel account (ERC-4337)
 │   ├── UniversalAccountProvider.tsx    # Particle UA (cross-chain, EIP-7702)
-│   ├── use-auth.ts                     # Privy-compatible adapter (useAuth, useLogout, useSmartWallets)
+│   ├── use-auth.ts                     # Unified auth hook (Magic + ZeroDev)
 │   └── ...                            # Other hooks
 ├── lib/
 │   ├── magic.ts                        # Magic SDK factory (EVMExtension, Base)
 │   ├── magic-admin.ts                  # Server-side Magic Admin singleton
 │   ├── session.ts                      # jose JWT sign/verify helpers
 │   ├── auth.ts                         # API route auth guard (reads session cookie)
-│   ├── wagmi.ts                        # Plain wagmi config (not @privy-io/wagmi)
+│   ├── openfort.ts                     # Openfort client singleton
+│   ├── openfort-account.ts             # Openfort → viem LocalAccount bridge
+│   ├── x402-agent.ts                   # x402 paying client (auto-handles 402)
+│   ├── x402-server.ts                  # x402 resource server config
+│   ├── wagmi.ts                        # wagmi config
 │   ├── ai/                             # System prompt, tools, window messages
 │   ├── db/                             # Drizzle client + schema (goals, activities)
 │   ├── constants.ts                    # Vault config, token addresses, chain IDs
@@ -211,6 +222,7 @@ src/
 - A [ZeroDev](https://zerodev.app) project (bundler RPC, optional paymaster RPC)
 - A [Particle Network](https://particle.network) project (project ID, client key, app ID)
 - A [Neon](https://neon.tech) Postgres database
+- An [Openfort](https://dashboard.openfort.io) backend wallet (for rewards + x402 payments)
 
 ### Setup
 
@@ -245,6 +257,10 @@ Required environment variables:
 | `ZERO_X_API_KEY` | Server only | 0x API key for swap quotes |
 | `NEXT_PUBLIC_MOONPAY_API_KEY` | Client | MoonPay publishable key (widget) |
 | `MOONPAY_SECRET_KEY` | Server only | MoonPay secret (signature generation) |
+| `OPENFORT_SECRET_KEY` | Server only | Openfort secret key |
+| `OPENFORT_WALLET_SECRET` | Server only | Openfort wallet secret |
+| `OPENFORT_BACKEND_WALLET_ID` | Server only | Openfort backend wallet ID (`acc_*`) |
+| `X402_PAYTO_ADDRESS` | Server only | Address that receives x402 micro-payments |
 
 Run database migrations:
 
@@ -345,14 +361,7 @@ User → Chat → AI advisor
 3. Registers `ExactEvmScheme(signer)` on an `x402Client`
 4. Returns `wrapFetchWithPayment(fetch, client)` — a drop-in fetch replacement that auto-handles 402 responses
 
-### AI tools added
-
-| Tool | Type | Description |
-|------|------|-------------|
-| `get_premium_insights` | Server | Calls `/api/market-data` via x402; Openfort backend wallet auto-pays |
-| `award_goal_reward` | Server | Sends 0.1 USDC to user via Openfort transaction intent when goal achieved |
-
-### Setup
+### Openfort setup
 
 1. Create an account at [dashboard.openfort.io](https://dashboard.openfort.io)
 2. Generate a **Secret Key** and **Wallet Secret**
@@ -360,50 +369,11 @@ User → Chat → AI advisor
 4. Fund the backend wallet with a small amount of USDC on Base (for rewards + x402 payments)
 5. Set `X402_PAYTO_ADDRESS` to any address you control on Base (receives 0.001 USDC per premium query)
 
-## Migration from Privy
-
-The following changes were made when migrating from Privy + wagmi to Magic + ZeroDev + Particle UA:
-
-**Removed packages:**
-- `@privy-io/react-auth`
-- `@privy-io/server-auth`
-- `@privy-io/wagmi`
-
-**Added packages:**
-- `magic-sdk@^33.7.1` — embedded wallet (email OTP, EIP-7702)
-- `@magic-ext/evm@^1.3.0` — EVM extension for Magic (Base chain config, `switchChain`)
-- `@magic-sdk/admin@^2.8.2` — server-side DID token validation
-- `@zerodev/sdk@^5.5.10` — kernel account creation + client
-- `@zerodev/ecdsa-validator@^5.4.9` — ECDSA signer → validator binding
-- `permissionless@^0.3.6` — ERC-4337 types
-- `@particle-network/universal-account-sdk@^1.1.1` — cross-chain UA
-- `jose@^5.9.6` — JWT session management
-- `ethers@^6.13.5` — BrowserProvider for personal_sign
-
-**New files:**
-- `src/lib/magic.ts` — Magic SDK factory
-- `src/lib/magic-admin.ts` — server-side Magic Admin singleton
-- `src/lib/session.ts` — jose JWT sign/verify
-- `src/lib/auth.ts` — updated to read session cookie (was Privy server-auth)
-- `src/lib/wagmi.ts` — updated import to plain `wagmi` (was `@privy-io/wagmi`)
-- `src/hooks/MagicProvider.tsx` — Magic context + email modal state
-- `src/hooks/ZeroDevProvider.tsx` — ZeroDev kernel account
-- `src/hooks/UniversalAccountProvider.tsx` — Particle UA + EIP-7702 delegation
-- `src/hooks/use-auth.ts` — Privy-compatible adapter hook
-- `src/components/auth/login-email-modal.tsx` — email OTP input modal
-- `src/components/dashboard/convert-sheet.tsx` — cross-chain Convert UI
-- `src/app/api/auth/session/route.ts` — session cookie minting
-- `src/app/api/auth/logout/route.ts` — session cookie deletion
-- `src/types/particle-network-universal-account-sdk.d.ts` — manual type shim
-
-**Modified files (import swaps only, no logic changes):**
-- 16+ components/pages: `usePrivy` → `useAuth`, `useSmartWallets` → `useSmartWallets` (from `use-auth`)
-- `src/providers/index.tsx` — replaced Privy provider tree with Magic/ZeroDev/UA tree
-- `src/app/app/page.tsx` — added Convert sheet + MoonPay standalone URL
-
 ## Hackathon
 
-Built for [Hack with YO: Designing Smart DeFi Savings](https://dorahacks.io/hackathon/yo/detail) on DoraHacks.
+Built for the [UXMaxx Hackathon](https://www.encodeclub.com/my-programmes/uxmaxx-hackathon) by Encode Club.
+
+**[Live App](https://bottie-app.vercel.app/)** · **[Demo Video](https://youtu.be/4danQ8SsfHE)**
 
 ## License
 
