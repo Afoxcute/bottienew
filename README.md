@@ -227,7 +227,7 @@ src/
 ### Setup
 
 ```bash
-git clone https://github.com/s0nderlabs/bottie.git
+git clone https://github.com/Afoxcute/bottie-app.git
 cd bottie
 yarn install
 ```
